@@ -4,124 +4,76 @@ import io
 
 st.set_page_config(page_title="Denature & Dilute Calculator", layout="wide")
 st.title("Library Prep — Denature & Dilute Web Calculator (Streamlit)")
-st.markdown(
-    """
-    Upload a table of sample concentrations (ng/µL) or enter them manually. The app computes the uL to pool for a chosen target mass per library (ng) or lets you set a target pooled concentration and do stepwise denature + dilution calculations.
 
-    **Notes:** Default protocol parameters are *editable* — change them to match your instrument (Aviti/MiSeq) or SOP.
-    """
-)
+# --- Section 1: Sample Input ---
+st.header("1) Input Library Concentrations")
+uploaded = st.file_uploader("Upload a CSV/XLSX with library concentrations (ng/µL)", type=["csv","xlsx"])
 
-# --- Input: samples ---
-st.header("1) Samples / Input")
-col1, col2 = st.columns([2,1])
-with col1:
-    uploaded = st.file_uploader("Upload a CSV/XLSX with at least columns: Sample, Concentration_ng_per_uL", type=["csv","xlsx"])
-    st.write("Or paste a simple two-column table (Sample, concentration)")
-    txt = st.text_area("Paste sample rows (one per line: name,conc)", height=80)
-
-with col2:
-    st.write("Example input format:")
-    st.code("Sample1,2.34\nSample2,10.1\nSample3,12.1")
-
-# load dataframe
-df = None
 if uploaded is not None:
     try:
         if uploaded.name.endswith('.csv'):
-            df = pd.read_csv(uploaded)
+            df = pd.read_csv(uploaded, header=None)
         else:
-            df = pd.read_excel(uploaded)
+            df = pd.read_excel(uploaded, header=None)
+        df.columns = ['Concentration_ng_per_uL']
     except Exception as e:
         st.error(f"Could not read file: {e}")
-
-if txt.strip() and df is None:
-    try:
-        df = pd.read_csv(io.StringIO(txt), header=None)
-        if df.shape[1] >= 2:
-            df = df.iloc[:,0:2]
-            df.columns = ['Sample','Concentration_ng_per_uL']
-    except Exception as e:
-        st.error(f"Could not parse pasted text: {e}")
-
-if df is None:
-    # blank template
-    df = pd.DataFrame({
-        'Sample': ['Sample_1','Sample_2','Sample_3'],
-        'Concentration_ng_per_uL': [2.11, 2.39, 2.34]
-    })
-
-# clean
-if 'Concentration_ng_per_uL' in df.columns:
-    df['Concentration_ng_per_uL'] = pd.to_numeric(df['Concentration_ng_per_uL'], errors='coerce')
+        df = pd.DataFrame({'Concentration_ng_per_uL':[2.11,2.39,2.34]})
 else:
-    # try to guess a second column
-    cols = df.columns.tolist()
-    if len(cols) >= 2:
-        df.columns = ['Sample','Concentration_ng_per_uL']
-        df['Concentration_ng_per_uL'] = pd.to_numeric(df['Concentration_ng_per_uL'], errors='coerce')
+    df = pd.DataFrame({'Concentration_ng_per_uL':[2.11,2.39,2.34]})
 
 st.dataframe(df)
 
-# --- Pooling calculation ---
-st.header("2) Pooling calculation")
-mode = st.radio("Choose pooling target mode", ['Target mass per library (ng)','Target pooled concentration (nM) — optional'])
+# --- Section 2: Pooling ---
+st.header("2) Pooling Calculation")
+target_ng = st.number_input('Target mass to pool per library (ng)', value=30.0, min_value=0.0, step=1.0)
+df['uL_to_pool'] = (target_ng / df['Concentration_ng_per_uL']).round(6)
+df['ng_pooled'] = (df['Concentration_ng_per_uL'] * df['uL_to_pool']).round(3)
 
-if mode.startswith('Target mass'):
-    target_ng = st.number_input('Target mass to pool per library (ng)', value=30.0, min_value=0.0, step=1.0)
-    df['uL_to_pool'] = (target_ng / df['Concentration_ng_per_uL']).round(6)
-    df['ng_pooled'] = (df['Concentration_ng_per_uL'] * df['uL_to_pool']).round(3)
-    st.write('uL to pool (calculated from target mass)')
-else:
-    st.info('Target pooled concentration mode uses molecular conversions and requires average fragment length in bp and library molar mass assumptions.')
-    target_nM = st.number_input('Target pooled concentration (nM)', value=4.0, min_value=0.0)
-    avg_bp = st.number_input('Average library insert length (bp)', value=350)
-    # Convert ng/ul -> nM: nM = (ng/ul * 1e6) / (660 * bp)
-    df['nM_per_uL'] = (df['Concentration_ng_per_uL'] * 1e6) / (660.0 * avg_bp)
-    # uL needed to reach target nM in final volume: This is an approximation; we present uL to contribute to 1 uL-equivalent
-    # We will compute uL to pool for a hypothetical 1 uL final volume of library material; better to use the mass-based method.
-    df['uL_to_pool'] = (target_nM / df['nM_per_uL']).replace([pd.NA, pd.Inf], None).round(6)
-    df['nM_pooled'] = (df['nM_per_uL'] * df['uL_to_pool']).round(3)
+st.dataframe(df)
 
-st.dataframe(df[['Sample','Concentration_ng_per_uL','uL_to_pool','ng_pooled' if 'ng_pooled' in df.columns else 'nM_pooled']])
+pool_volume = df['uL_to_pool'].sum()
+st.markdown(f"**Total pooled volume (µL):** {pool_volume:.3f}")
 
-total_uL = df['uL_to_pool'].sum()
-st.markdown(f"**Total pooled volume (sum of uL to pool):** {total_uL:.3f} µL")
+# --- Section 3: Denature & Dilution ---
+st.header("3) Denature & Dilution Workflow")
 
-# Option to add pooling dead volume / make-up
-dead_vol = st.number_input('Pool dead volume / extra µL (to account for pipetting)', value=5.0)
-pool_volume = total_uL + dead_vol
-st.markdown(f"**Planned pooled volume including dead volume:** {pool_volume:.2f} µL")
+st.subheader("a) Pool Libraries & Qubit Quant")
+expected_conc = (df['ng_pooled'].sum() / pool_volume) if pool_volume > 0 else 0
+st.markdown(f"**Expected pooled concentration:** {expected_conc:.2f} ng/µL")
+actual_conc = st.number_input('Enter actual pooled concentration from Qubit (ng/µL)', value=expected_conc, min_value=0.0)
+if actual_conc < expected_conc * 0.8 or actual_conc > expected_conc * 1.2:
+    st.warning('Actual concentration differs >20% from expected — double-check quantification!')
 
-# --- Denature & Dilute ---
-st.header("3) Denature & Dilution steps")
-st.markdown('Editable protocol parameters — change to match your SOP or instrument.')
-colA, colB, colC = st.columns(3)
-with colA:
-    vol_library_to_use = st.number_input('Volume of pooled library used for denaturation (µL)', value=min(50.0, pool_volume))
-    naoh_conc_N = st.number_input('NaOH concentration (N) to add (e.g. 0.2)', value=0.2)
-    naoh_volume = st.number_input('Volume of NaOH to add (µL)', value=vol_library_to_use)  # often equal volume
-with colB:
-    incubation_min = st.number_input('Incubation time (min)', value=5)
-    neutralize_with = st.selectbox('Neutralize with', ['Tris-HCl pH 7.0 (0.2 M)', 'Dilution Buffer (HT1)', 'Custom'])
-    tris_volume = st.number_input('Volume of Tris-HCl (µL) to add after neutralization', value=1200.0)
-with colC:
-    final_loading_volume = st.number_input('Final volume for loading (µL)', value=1400.0)
-    final_loading_conc_nM = st.number_input('Target final loading concentration (pM or nM as desired)', value=12.5)
+st.subheader("b) Dilute Library Pool")
+desired_ng_per_ul = st.number_input('Target library pool concentration (ng/µL) for loading', value=actual_conc, min_value=0.0)
+library_dilution_factor = actual_conc / desired_ng_per_ul if desired_ng_per_ul > 0 else 1
+st.markdown(f"Dilution factor for library pool: **{library_dilution_factor:.2f}x**")
 
-# Basic denature calculation (conservative)
-st.subheader('Calculated denature mix')
-st.markdown(f"- Library aliquot: **{vol_library_to_use:.2f} µL**")
-st.markdown(f"- Add NaOH {naoh_conc_N} N — volume: **{naoh_volume:.2f} µL**, incubate **{incubation_min} min** at RT")
-st.markdown(f"- Then add {tris_volume:.2f} µL {neutralize_with} to neutralize/dilute to a final volume of approx **{vol_library_to_use + naoh_volume + tris_volume:.2f} µL**")
+st.subheader("c) Dilute PhiX")
+use_phix = st.checkbox("Use PhiX (spike-in)", value=True)
+if use_phix:
+    phix_conc = st.number_input('PhiX stock concentration (nM or ng/µL depending on SOP)', value=10.0)
+    phix_target = st.number_input('Target PhiX fraction (%)', value=1.0)
+    st.markdown(f"Dilute PhiX to match desired spike-in concentration based on overall loading conc ({desired_ng_per_ul} ng/µL).")
 
-# Final computed available volume for loading and whether enough
-available_after_dilution = vol_library_to_use + naoh_volume + tris_volume
-st.markdown(f"**Available volume after dilution:** {available_after_dilution:.2f} µL. Planned final loading volume: {final_loading_volume:.2f} µL.")
-if available_after_dilution < final_loading_volume:
-    st.warning('Available diluted volume is smaller than your planned loading volume. Increase pool aliquot or Tris/diluent volume.')
-else:
-    st.success('Diluted volume meets planned loading volume.')
+st.subheader("d) Pool Library + PhiX")
+st.markdown("Combine diluted library pool and diluted PhiX in desired ratio before denaturation.")
+
+st.subheader("e) Denature with NaOH")
+naoh_volume = st.number_input('Volume of 0.2 N NaOH to add (µL)', value=pool_volume)
+st.markdown(f"Add {naoh_volume:.2f} µL of 0.2 N NaOH to the combined library+PhiX pool, mix, spin, incubate 5 min.")
+
+st.subheader("f) Neutralize with Tris-HCl")
+st.markdown(f"Add {naoh_volume:.2f} µL of 0.2 M pH 7 Tris-HCl to neutralize.")
+
+st.subheader("g) Bring to Final Volume")
+final_volume = 1400.0
+loading_buffer = st.number_input('Volume of loading buffer to add (µL)', value=max(0.0, final_volume - (pool_volume + naoh_volume*2)))
+st.markdown(f"Bring total volume up to **{final_volume} µL** with loading buffer.")
+
+st.subheader("h) Load")
+st.markdown("Load all 1400 µL into cartridge.")
 
 # Export results
 st.header('Export')
@@ -132,8 +84,4 @@ out_df.to_csv(buf, index=False)
 buf.seek(0)
 st.download_button('Download pool plan as CSV', data=buf, file_name='pool_plan.csv')
 
-st.markdown('---')
-st.write('If you want, download this app script and run with:')
-st.code('pip install streamlit pandas\nstreamlit run denature_dilute_app.py')
-
-st.caption('This calculator provides **estimates** and flexible parameters. Verify volumes and concentrations against your laboratory SOP and instrument documentation before proceeding with experiments.')
+st.caption('Verify all calculations against your SOP and instrument documentation before proceeding.')
