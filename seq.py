@@ -9,6 +9,9 @@ st.title("Library Prep — Denature & Dilute Web Calculator (Streamlit)")
 st.header("1) Input Library Concentrations")
 uploaded = st.file_uploader("Upload a CSV/XLSX with library concentrations (ng/µL)", type=["csv","xlsx"])
 
+manual_text = st.text_area("Or manually enter concentrations (one per line)", placeholder="2.11\n2.39\n2.34")
+
+df = None
 if uploaded is not None:
     try:
         if uploaded.name.endswith('.csv'):
@@ -18,8 +21,15 @@ if uploaded is not None:
         df.columns = ['Concentration_ng_per_uL']
     except Exception as e:
         st.error(f"Could not read file: {e}")
-        df = pd.DataFrame({'Concentration_ng_per_uL':[2.11,2.39,2.34]})
-else:
+
+if df is None and manual_text.strip():
+    try:
+        vals = [float(x.strip()) for x in manual_text.strip().splitlines() if x.strip()]
+        df = pd.DataFrame({'Concentration_ng_per_uL': vals})
+    except Exception as e:
+        st.error(f"Could not parse manual entries: {e}")
+
+if df is None:
     df = pd.DataFrame({'Concentration_ng_per_uL':[2.11,2.39,2.34]})
 
 st.dataframe(df)
