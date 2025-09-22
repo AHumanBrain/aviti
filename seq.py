@@ -59,6 +59,11 @@ st.markdown(f"**Total pooled volume (µL):** {pool_volume:.3f}")
 # --- Section 3: Denature & Dilution Workflow ---
 st.header("3) Denature & Dilution Workflow (stepwise)")
 
+# Ensure variables always exist
+chosen_L = None
+chosen_P = None
+achieved_f = None
+
 # a) Pool libraries and Qubit
 st.subheader('a) Pool libraries & Qubit quant')
 expected_conc = (df['ng_pooled'].sum() / pool_volume) if pool_volume > 0 else 0.0
