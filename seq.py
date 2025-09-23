@@ -8,9 +8,10 @@ st.title("Library Prep — Denature & Dilute Web Calculator (Streamlit)")
 # --- Section 1: Sample Input ---
 st.header("1) Input Library Concentrations (ng/µL)")
 uploaded = st.file_uploader("Upload a CSV/XLSX with library concentrations (one column of numbers, ng/µL)", type=["csv","xlsx"])
-manual_text = st.text_area("Or manually enter concentrations (one per line)", placeholder="2.11
-2.39
-2.34")
+manual_text = st.text_area(
+    "Or manually enter concentrations (one per line)",
+    placeholder="2.11\n2.39\n2.34"
+)
 
 # load concentrations (single-column) into dataframe
 if uploaded is not None:
