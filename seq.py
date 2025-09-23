@@ -64,9 +64,9 @@ chosen_L = None
 chosen_P = None
 achieved_f = None
 
-# User inputs minimal: insert size and desired loading conc
+# User inputs minimal: library size and desired loading conc
 st.subheader('User inputs (minimal)')
-insert_length_bp = st.number_input('Library insert size (bp)', value=400, min_value=1)
+library_length_bp = st.number_input('Library size (bp)', value=400, min_value=1)
 loading_conc_pM = st.number_input('Desired loading concentration (pM)', value=10.0, min_value=0.1)
 # effective loading (99%)
 effective_loading_pM = 0.99 * loading_conc_pM
@@ -78,8 +78,8 @@ st.markdown(f"Expected pooled concentration (from pooling plan): **{expected_poo
 actual_qubit = st.number_input('(Optional) Enter actual pooled concentration from Qubit (ng/µL) — leave as expected to use calculated value', value=round(expected_pooled_ngul,6), format="%.6f")
 pooled_ngul = actual_qubit if actual_qubit and actual_qubit > 0 else expected_pooled_ngul
 # convert to nM: nM = (ng/µL * 1e6) / (660 * bp)
-pool_conc_nM = pooled_ngul * 1e6 / (660.0 * insert_length_bp)
-st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {insert_length_bp} bp)")
+pool_conc_nM = pooled_ngul * 1e6 / (660.0 * library_length_bp)
+st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {library_length_bp} bp)")
 
 # PhiX working concentration options
 st.subheader('PhiX working solution')
@@ -136,7 +136,7 @@ if best:
     chosen_L = best_L
     chosen_P = best_P
 else:
-    st.error('Could not find pipettable volumes that satisfy constraints with current inputs. Try adjusting loading concentration or insert size.')
+    st.error('Could not find pipettable volumes that satisfy constraints with current inputs. Try adjusting loading concentration or library size.')
 
 # Compute NaOH and Tris volumes (equal to pre-denature total) and final buffer top-up
 pre_denature_vol = round((chosen_L or 0) + (chosen_P or 0),3)
@@ -152,4 +152,4 @@ st.markdown(f"Add **{tris_vol} µL** of 0.2 M pH 7 Tris-HCl to neutralize.")
 st.markdown(f"Total after neutralization: **{small_denature_total} µL**")
 st.markdown(f"Add **{loading_buffer_to_add} µL** of loading buffer to bring to **1400 µL** and load entire volume into cartridge.")
 
-st.caption('Only visible user inputs: library insert size and desired loading concentration. All other volumes are calculated to meet pipetting constraints (1–10 µL per constituent) and SOP rules (PhiX 1%). Verify before proceeding.')
+st.caption('Only visible user inputs: library size and desired loading concentration. All other volumes are calculated to meet pipetting constraints (1–10 µL per constituent) and SOP rules (PhiX 1%). Verify before proceeding.')
