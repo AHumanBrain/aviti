@@ -62,11 +62,10 @@ st.header("3) Denature & Dilute — automated volumes")
 # Ensure variables
 chosen_L = None
 chosen_P = None
-achieved_f = None
 
 # User inputs minimal: library size and desired loading conc
 st.subheader('User inputs (minimal)')
-library_length_bp = st.number_input('Library size (bp)', value=400, min_value=1)
+library_size_bp = st.number_input('Average library size (bp)', value=400, min_value=1)
 loading_conc_pM = st.number_input('Desired loading concentration (pM)', value=10.0, min_value=0.1)
 # effective loading (99%)
 effective_loading_pM = 0.99 * loading_conc_pM
@@ -77,13 +76,13 @@ expected_pooled_ngul = (df['ng_pooled'].sum() / pool_volume) if pool_volume > 0 
 st.markdown(f"Expected pooled concentration (from pooling plan): **{expected_pooled_ngul:.4f} ng/µL**")
 actual_qubit = st.number_input('(Optional) Enter actual pooled concentration from Qubit (ng/µL) — leave as expected to use calculated value', value=round(expected_pooled_ngul,6), format="%.6f")
 pooled_ngul = actual_qubit if actual_qubit and actual_qubit > 0 else expected_pooled_ngul
-# convert to nM: nM = (ng/µL * 1e6) / (660 * bp)
-pool_conc_nM = pooled_ngul * 1e6 / (660.0 * library_length_bp)
-st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {library_length_bp} bp)")
+
+# convert ng/µL to nM using library size
+pool_conc_nM = pooled_ngul * 1e6 / (660.0 * library_size_bp)
+st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {library_size_bp} bp)")
 
 # PhiX working concentration options
 st.subheader('PhiX working solution')
-phix_default_from_stock = True
 phix_choice = st.radio('PhiX source', ['Use 1 nM stock and dilute (recommended)','I have a pre-diluted PhiX working solution'])
 if phix_choice.startswith('Use 1 nM'):
     phix_dil_factor = st.number_input('Dilution factor for stock -> working (e.g. 40 for 1:40)', value=40, min_value=1)
@@ -96,43 +95,45 @@ st.markdown(f"PhiX working concentration used: **{phix_working_nM:.6f} nM**")
 phix_fraction = 0.01
 st.markdown(f"PhiX target fraction of molecules at load: **{phix_fraction*100:.2f}% (fixed)**")
 
-# Now find a dilution factor for the pooled library (integer 1..50) that yields pipettable aliquot L (µL)
-# Equation: final_pM = L * C_L * 0.7142857 ; where C_L = pool_conc_nM / d ; target final_pM = effective_loading_pM
-# => L = (effective_loading_pM / 0.7142857) / C_L
-K = effective_loading_pM * 1.4  # since 1/0.7142857 ≈ 1.4
+# --- Formulae from SOP / Spreadsheet ---
+# For each dilution factor d, calculate required library and PhiX volumes
 best = None
 candidates = []
 for d in range(1,51):
-    C_L = pool_conc_nM / d if d>0 else 0
+    C_L = pool_conc_nM / d if d > 0 else 0  # diluted library concentration (nM)
     if C_L <= 0:
         continue
-    L = K / C_L
-    if L <= 0:
-        continue
-    # compute required P for PhiX: P = (f * L * C_L) / ((1-f) * C_P)
-    denom = (1.0 - phix_fraction) * phix_working_nM
-    if denom <= 0:
-        P = float('nan')
-    else:
+    # library volume to achieve target load (µL)
+    # derived from: L * C_L / (L + P) = effective_loading_pM (converted to nM)
+    # solve iteratively with PhiX fraction
+    # Using sheet formula: P = (f * L * C_L) / ((1-f) * C_P)
+    for L in [x/10.0 for x in range(10,101)]:  # 1.0 to 10.0 µL in 0.1 increments
+        denom = (1.0 - phix_fraction) * phix_working_nM
+        if denom <= 0:
+            continue
         P = (phix_fraction * L * C_L) / denom
-    pre_total = L + P
-    # check constraints: individual volumes between 1 and 10, prefer L in 4-8
-    ok = (1.0 <= L <= 10.0) and (1.0 <= P <= 10.0) and (pre_total <= 30.0)
-    score = 0
-    # scoring: prefer ok, then prefer L near 6, smaller pre_total
-    score += (100 if ok else 0)
-    score -= abs(6.0 - L)
-    score -= pre_total * 0.01
-    candidates.append((score, d, round(L,3), round(P,3), round(pre_total,3)))
+        if P < 1.0 or P > 10.0:
+            continue
+        pre_total = L + P
+        if pre_total <= 0 or pre_total > 30:
+            continue
+        # effective concentration achieved
+        achieved_pM = (L * C_L + P * phix_working_nM) / pre_total * 1000.0  # nM->pM
+        diff = abs(achieved_pM - effective_loading_pM)
+        score = -diff  # smaller diff is better
+        # prefer L near 5–7 µL
+        score -= abs(6.0 - L)
+        candidates.append((score, d, round(L,2), round(P,2), round(pre_total,2), achieved_pM))
 
 if candidates:
     candidates.sort(reverse=True)
     best = candidates[0]
 
 if best:
-    _, best_d, best_L, best_P, best_pre = best
+    _, best_d, best_L, best_P, best_pre, achieved_pM = best
     st.markdown(f"Selected pooled-library dilution: **1:{best_d}** → working conc {pool_conc_nM/best_d:.4f} nM")
-    st.markdown(f"Pipette **{best_L} µL** of diluted pooled library and **{best_P} µL** of PhiX working solution into the denature mix. (Pre-denature volume: {best_pre} µL)")
+    st.markdown(f"Pipette **{best_L} µL** of diluted pooled library and **{best_P} µL** of PhiX working solution into the denature mix.")
+    st.markdown(f"Pre-denature total: **{best_pre} µL**, achieving ~{achieved_pM:.2f} pM (target {effective_loading_pM:.2f} pM).")
     chosen_L = best_L
     chosen_P = best_P
 else:
@@ -152,4 +153,4 @@ st.markdown(f"Add **{tris_vol} µL** of 0.2 M pH 7 Tris-HCl to neutralize.")
 st.markdown(f"Total after neutralization: **{small_denature_total} µL**")
 st.markdown(f"Add **{loading_buffer_to_add} µL** of loading buffer to bring to **1400 µL** and load entire volume into cartridge.")
 
-st.caption('Only visible user inputs: library size and desired loading concentration. All other volumes are calculated to meet pipetting constraints (1–10 µL per constituent) and SOP rules (PhiX 1%). Verify before proceeding.')
+st.caption('Only visible user inputs: library size (bp) and desired loading concentration. All other volumes are calculated to meet pipetting constraints (1–10 µL per constituent) and SOP rules (PhiX 1%). Verify before proceeding.')
