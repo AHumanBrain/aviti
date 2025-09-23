@@ -78,7 +78,7 @@ actual_qubit = st.number_input('(Optional) Enter actual pooled concentration fro
 pooled_ngul = actual_qubit if actual_qubit and actual_qubit > 0 else expected_pooled_ngul
 
 # convert ng/µL to nM using library size
-pool_conc_nM = pooled_ngul * 1e6 / (660.0 * library_size_bp)
+pool_conc_nM = pooled_ngul * 0.8 * 1e6 / 660.0 / library_size_bp
 st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {library_size_bp} bp)")
 
 # PhiX working concentration options
