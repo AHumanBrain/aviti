@@ -40,7 +40,7 @@ txt = st.text_area(
 )
 rows = [r for r in [l.strip() for l in txt.splitlines()] if r]
 parsed = []
-    for r in rows:
+for r in rows:
         parts = [p.strip() for p in r.split(',')]
         # allow missing fields
         while len(parts) < 6:
