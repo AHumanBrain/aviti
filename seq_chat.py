@@ -38,7 +38,7 @@ txt = st.text_area(
     "Paste lines here",
     value="sampleA,300,100000,7410,5,1\nsampleB,300,200000,7411,5,10"
 )
-    rows = [r for r in [l.strip() for l in txt.splitlines()] if r]
+rows = [r for r in [l.strip() for l in txt.splitlines()] if r]
     parsed = []
     for r in rows:
         parts = [p.strip() for p in r.split(',')]
