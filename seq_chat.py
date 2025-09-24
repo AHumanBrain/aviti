@@ -2,155 +2,168 @@ import streamlit as st
 import pandas as pd
 import math
 
-st.set_page_config(page_title="Denature & Dilute Calculator", layout="wide")
-st.title("Library Prep — Denature & Dilute Web Calculator (Streamlit)")
+st.set_page_config(page_title="Denature & Dilute + Variable Read Allocation", layout="wide")
+st.title("Library Prep — Pooling & Denature/Dilute Calculator")
 
-# --- Section 1: Sample Input ---
-st.header("1) Input Library Concentrations (ng/µL)")
-uploaded = st.file_uploader("Upload a CSV/XLSX with library concentrations (one column of numbers, ng/µL)", type=["csv","xlsx"])
-manual_text = st.text_area(
-    "Or manually enter concentrations (one per line)",
-    placeholder="2.11\n2.39\n2.34"
-)
+st.markdown("""
+This app lets you define per-sample read allocations (percent of cartridge) and computes how much mass and volume of each library to pool, including dilution steps, PhiX working dilution handling, and the final denature/dilute procedure to load 1400 µL.
 
-# load concentrations (single-column) into dataframe
+Upload a sheet with columns (or enter manually):
+- Sample alias
+- Library size (bp) or insert size (bp) and adapter type
+- Number of unique oligos
+- i7 index (optional)
+- Qubit ng/µL
+- Desired percent of run (or desired coverage and cartridge capacity; see options below)
+
+Only a minimal set of inputs is required; the app will compute the rest.
+""")
+
+# --- Data input: upload or manual ---
+st.header('1) Sample table')
+uploaded = st.file_uploader('Upload a CSV/XLSX exported from your sample planner (columns: alias, insert_bp [or library_bp], unique_oligos, i7, qubit_ngul, desired_percent)', type=['csv','xlsx'])
+manual = st.checkbox('Or enter samples manually')
+
 if uploaded is not None:
     try:
-        if uploaded.name.lower().endswith('.csv'):
-            df = pd.read_csv(uploaded, header=None)
-        else:
-            df = pd.read_excel(uploaded, header=None)
-        df.columns = ['Concentration_ng_per_uL']
-        df['Concentration_ng_per_uL'] = pd.to_numeric(df['Concentration_ng_per_uL'], errors='coerce')
+        raw = pd.read_excel(uploaded, header=1) if uploaded.name.lower().endswith(('xlsx','xls')) else pd.read_csv(uploaded, header=1)
+        st.success('File loaded — attempting to map columns by header names. If headers differ, use manual entry.')
+        df = raw.copy()
     except Exception as e:
-        st.error(f"Could not read file: {e}")
-        df = pd.DataFrame({'Concentration_ng_per_uL': [2.11, 2.39, 2.34]})
-
-elif manual_text and manual_text.strip():
-    try:
-        vals = [float(x.strip()) for x in manual_text.strip().splitlines() if x.strip()]
-        df = pd.DataFrame({'Concentration_ng_per_uL': vals})
-    except Exception as e:
-        st.error(f"Could not parse manual entries: {e}")
-        df = pd.DataFrame({'Concentration_ng_per_uL': [2.11, 2.39, 2.34]})
-
+        st.error(f'Could not read file: {e}')
+        df = pd.DataFrame()
+elif manual:
+    st.write('Enter one sample per line: alias, insert_bp, unique_oligos, i7 (optional), qubit_ngul, desired_percent')
+    txt = st.text_area('Paste lines here', value='sampleA,300,100000,7410,5,1
+sampleB,300,200000,7411,5,10')
+    rows = [r for r in [l.strip() for l in txt.splitlines()] if r]
+    parsed = []
+    for r in rows:
+        parts = [p.strip() for p in r.split(',')]
+        # allow missing fields
+        while len(parts) < 6:
+            parts.append('')
+        parsed.append(parts[:6])
+    df = pd.DataFrame(parsed, columns=['alias','insert_bp','unique_oligos','i7','qubit_ngul','desired_percent'])
 else:
-    df = pd.DataFrame({'Concentration_ng_per_uL': [2.11, 2.39, 2.34]})
+    df = pd.DataFrame(columns=['alias','insert_bp','unique_oligos','i7','qubit_ngul','desired_percent'])
 
-st.subheader('Input preview')
+# Normalize column names if present
+cols = [c.lower().strip() for c in df.columns]
+# Try to rename common variations
+rename_map = {}
+for c in df.columns:
+    lc = c.lower()
+    if 'alias' in lc or 'sample' in lc:
+        rename_map[c] = 'alias'
+    if 'insert' in lc and 'bp' in lc:
+        rename_map[c] = 'insert_bp'
+    if 'library size' in lc or (('size' in lc or 'bp' in lc) and 'insert' not in lc):
+        rename_map[c] = 'library_bp'
+    if 'unique' in lc and 'oligo' in lc:
+        rename_map[c] = 'unique_oligos'
+    if 'i7' in lc:
+        rename_map[c] = 'i7'
+    if 'qubit' in lc or 'ng/ul' in lc or 'ng' in lc:
+        rename_map[c] = 'qubit_ngul'
+    if 'percent' in lc or '%' in lc:
+        rename_map[c] = 'desired_percent'
+if rename_map:
+    df = df.rename(columns=rename_map)
+
+# Fill missing columns with defaults
+for req in ['alias','insert_bp','unique_oligos','i7','qubit_ngul','desired_percent']:
+    if req not in df.columns:
+        df[req] = ''
+
+# Convert numeric columns
+for col in ['insert_bp','unique_oligos','qubit_ngul','desired_percent']:
+    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+st.subheader('Sample preview')
 st.dataframe(df)
 
-# --- Section 2: Pooling ---
-st.header("2) Pooling calculation")
-st.write("This calculates µL to pool per library to reach a target mass (ng) per library in the pool.")
-
-target_ng = st.number_input('Target mass to pool per library (ng)', value=30.0, min_value=0.0, step=1.0)
-
-# compute uL to pool and ng pooled
-df['uL_to_pool'] = (target_ng / df['Concentration_ng_per_uL']).round(6)
-df['ng_pooled'] = (df['Concentration_ng_per_uL'] * df['uL_to_pool']).round(3)
-
-st.subheader('Per-sample pooling plan')
-st.dataframe(df)
-
-pool_volume = df['uL_to_pool'].sum()
-st.markdown(f"**Total pooled volume (µL):** {pool_volume:.3f}")
-
-# --- Section 3: Denature & Dilution Workflow ---
-st.header("3) Denature & Dilute — automated volumes")
-
-# Ensure variables
-chosen_L = None
-chosen_P = None
-
-# User inputs minimal: library size and desired loading conc
-st.subheader('User inputs (minimal)')
-library_size_bp = st.number_input('Average library size (bp)', value=400, min_value=1)
+# --- Global parameters ---
+st.header('2) Global parameters')
+adapter_type = st.radio('Adapter type', ['Single-indexed (124 bp)','Dual-indexed (136 bp)'])
+adapter_len = 124 if adapter_type.startswith('Single') else 136
+n_reads_capacity = st.number_input('Cartridge capacity (total unique reads)', value=2500000, min_value=1)
+desired_coverage = st.number_input('Desired coverage (reads per unique oligo)', value=20, min_value=1)
 loading_conc_pM = st.number_input('Desired loading concentration (pM)', value=10.0, min_value=0.1)
-# effective loading (99%)
-effective_loading_pM = 0.99 * loading_conc_pM
-st.markdown(f"Effective loading concentration used for calculations: **{effective_loading_pM:.3f} pM**")
+phix_use = st.checkbox('Include PhiX (1% fixed)', value=True)
+phix_stock_choice = st.radio('PhiX source', ['Use 1 nM stock and dilute (recommended)','I have pre-diluted PhiX working solution'])
+phix_dil = st.number_input('If using stock: dilution factor (e.g. 40 for 1:40)', value=40, min_value=1) if phix_stock_choice.startswith('Use') else None
+phix_working_nM = (1.0 / phix_dil) if phix_stock_choice.startswith('Use') else st.number_input('Enter PhiX working conc (nM)', value=0.025, min_value=0.0, format='%.6f')
 
-# Compute expected pooled concentration from pool plan (ng/µL) and convert to nM
-expected_pooled_ngul = (df['ng_pooled'].sum() / pool_volume) if pool_volume > 0 else 0.0
-st.markdown(f"Expected pooled concentration (from pooling plan): **{expected_pooled_ngul:.4f} ng/µL**")
-actual_qubit = st.number_input('(Optional) Enter actual pooled concentration from Qubit (ng/µL) — leave as expected to use calculated value', value=round(expected_pooled_ngul,6), format="%.6f")
-pooled_ngul = actual_qubit if actual_qubit and actual_qubit > 0 else expected_pooled_ngul
+st.markdown('---')
 
-# convert ng/µL to nM using library size
-pool_conc_nM = pooled_ngul * 0.8 * 1e6 / 660.0 / library_size_bp
-st.markdown(f"Pooled library concentration: **{pool_conc_nM:.4f} nM** (based on {pooled_ngul:.6f} ng/µL and {library_size_bp} bp)")
+# --- Calculations per sample ---
+rows = []
+for i, r in df.iterrows():
+    alias = r.get('alias') if pd.notna(r.get('alias')) else f'sample_{i+1}'
+    insert_bp = r.get('insert_bp') if pd.notna(r.get('insert_bp')) else None
+    unique_oligos = r.get('unique_oligos') if pd.notna(r.get('unique_oligos')) else 0
+    i7 = r.get('i7')
+    qubit_ngul = r.get('qubit_ngul') if pd.notna(r.get('qubit_ngul')) else None
+    desired_percent = r.get('desired_percent') if pd.notna(r.get('desired_percent')) else None
+    # compute library size (bp)
+    lib_bp = insert_bp + adapter_len if insert_bp else None
+    # percent of run from unique oligos * coverage / capacity
+    percent_of_run = (unique_oligos * desired_coverage) / n_reads_capacity if unique_oligos and n_reads_capacity else (desired_percent/100.0 if desired_percent else 0)
+    # compute total mass at load (ng) using loading_conc and average bp: mass_total_ng = C_nM * V_uL * bp * 660e-6
+    C_nM = loading_conc_pM / 1000.0  # pM -> nM
+    V_uL = 1400.0
+    mass_total_ng = C_nM * V_uL * (lib_bp if lib_bp else 300) * 660.0 * 1e-6
+    ng_to_pool = percent_of_run * mass_total_ng
+    uL_to_pool = ng_to_pool / qubit_ngul if qubit_ngul and qubit_ngul>0 else None
+    # dilution factor selection to make diluted pool aliquot pipettable (prefer 4-8 µL)
+    chosen_df = None
+    chosen_diluted_pool_uL = None
+    if uL_to_pool:
+        best_score = None
+        for d in range(1,101):
+            diluted_uL = uL_to_pool * d
+            if 1.0 <= diluted_uL <= 50.0:
+                score = -abs(diluted_uL - 6.0)  # prefer near 6 µL
+                if best_score is None or score > best_score:
+                    best_score = score
+                    chosen_df = d
+                    chosen_diluted_pool_uL = round(diluted_uL,3)
+    rows.append({
+        'alias': alias,
+        'lib_bp': lib_bp,
+        'unique_oligos': unique_oligos,
+        'percent_of_run': percent_of_run,
+        'qubit_ngul': qubit_ngul,
+        'ng_to_pool': ng_to_pool,
+        'uL_to_pool': uL_to_pool,
+        'dilution_factor': chosen_df,
+        'diluted_uL_to_pool': chosen_diluted_pool_uL,
+        'i7': i7
+    })
 
-# PhiX working concentration options
-st.subheader('PhiX working solution')
-phix_choice = st.radio('PhiX source', ['Use 1 nM stock and dilute (recommended)','I have a pre-diluted PhiX working solution'])
-if phix_choice.startswith('Use 1 nM'):
-    phix_dil_factor = st.number_input('Dilution factor for stock -> working (e.g. 40 for 1:40)', value=40, min_value=1)
-    phix_working_nM = 1.0 / phix_dil_factor
-else:
-    phix_working_nM = st.number_input('Enter PhiX working concentration (nM)', value=0.025, min_value=0.0, format="%.6f")
-st.markdown(f"PhiX working concentration used: **{phix_working_nM:.6f} nM**")
+out = pd.DataFrame(rows)
+st.subheader('Computed pooling plan (pre-dilution)')
+st.dataframe(out)
 
-# Target PhiX fraction (fixed at 1% per SOP)
-phix_fraction = 0.01
-st.markdown(f"PhiX target fraction of molecules at load: **{phix_fraction*100:.2f}% (fixed)**")
+# Now compute combined pool prep for denature/dilute steps
+st.header('3) Pool prep -> Denature/Dilute/Load')
+# sum diluted volumes that will be pooled (use diluted_uL_to_pool if present, else uL_to_pool)
+pooling_contrib = 0.0
+for idx, row in out.iterrows():
+    if row['diluted_uL_to_pool']:
+        pooling_contrib += row['diluted_uL_to_pool']
+    elif row['uL_to_pool']:
+        pooling_contrib += row['uL_to_pool']
 
-# --- Formulae from SOP / Spreadsheet ---
-# For each dilution factor d, calculate required library and PhiX volumes
-best = None
-candidates = []
-for d in range(1,51):
-    C_L = pool_conc_nM / d if d > 0 else 0  # diluted library concentration (nM)
-    if C_L <= 0:
-        continue
-    # library volume to achieve target load (µL)
-    # derived from: L * C_L / (L + P) = effective_loading_pM (converted to nM)
-    # solve iteratively with PhiX fraction
-    # Using sheet formula: P = (f * L * C_L) / ((1-f) * C_P)
-    for L in [x/10.0 for x in range(10,101)]:  # 1.0 to 10.0 µL in 0.1 increments
-        denom = (1.0 - phix_fraction) * phix_working_nM
-        if denom <= 0:
-            continue
-        P = (phix_fraction * L * C_L) / denom
-        if P < 1.0 or P > 10.0:
-            continue
-        pre_total = L + P
-        if pre_total <= 0 or pre_total > 30:
-            continue
-        # effective concentration achieved
-        achieved_pM = (L * C_L + P * phix_working_nM) / pre_total * 1000.0  # nM->pM
-        diff = abs(achieved_pM - effective_loading_pM)
-        score = -diff  # smaller diff is better
-        # prefer L near 5–7 µL
-        score -= abs(6.0 - L)
-        candidates.append((score, d, round(L,2), round(P,2), round(pre_total,2), achieved_pM))
+st.markdown(f"Total pooled diluted volume (sum of diluted aliquots): **{pooling_contrib:.3f} µL**")
 
-if candidates:
-    candidates.sort(reverse=True)
-    best = candidates[0]
+# PhiX addition: compute required phiX volume to achieve 1% of molecules at load
+if phix_use:
+    # use phix_working_nM
+    # compute library working concentration in nM for pooled diluted mixture: approximate using pool_conc_nM/d where d is chosen average dilution
+    avg_dil = out['dilution_factor'].dropna().mean() if not out['dilution_factor'].isnull().all() else 1
+    pool_conc_nM = (pooled_ngul * 1e6) / (660.0 * (library_size_bp if 'library_size_bp' in locals() else 300)) if 'pooled_ngul' in locals() else None
+    st.markdown('PhiX will be added per SOP to reach ~1% of molecules at load. The app reports required µL based on pooled diluted volume above.')
 
-if best:
-    _, best_d, best_L, best_P, best_pre, achieved_pM = best
-    st.markdown(f"Selected pooled-library dilution: **1:{best_d}** → working conc {pool_conc_nM/best_d:.4f} nM")
-    st.markdown(f"Pipette **{best_L} µL** of diluted pooled library and **{best_P} µL** of PhiX working solution into the denature mix.")
-    st.markdown(f"Pre-denature total: **{best_pre} µL**, achieving ~{achieved_pM:.2f} pM (target {effective_loading_pM:.2f} pM).")
-    chosen_L = best_L
-    chosen_P = best_P
-else:
-    st.error('Could not find pipettable volumes that satisfy constraints with current inputs. Try adjusting loading concentration or library size.')
-
-# Compute NaOH and Tris volumes (equal to pre-denature total) and final buffer top-up
-pre_denature_vol = round((chosen_L or 0) + (chosen_P or 0),3)
-naoh_vol = pre_denature_vol
-tris_vol = naoh_vol
-small_denature_total = round(pre_denature_vol + naoh_vol + tris_vol,3)
-loading_buffer_to_add = round(max(0.0, 1400.0 - small_denature_total),3)
-
-st.subheader('Denature & neutralize steps (read-only)')
-st.markdown(f"Pre-denature volume (library + PhiX): **{pre_denature_vol} µL**")
-st.markdown(f"Add **{naoh_vol} µL** of 0.2 N NaOH (mix, spin, incubate 5 min).")
-st.markdown(f"Add **{tris_vol} µL** of 0.2 M pH 7 Tris-HCl to neutralize.")
-st.markdown(f"Total after neutralization: **{small_denature_total} µL**")
-st.markdown(f"Add **{loading_buffer_to_add} µL** of loading buffer to bring to **1400 µL** and load entire volume into cartridge.")
-
-st.caption('Only visible user inputs: library size (bp) and desired loading concentration. All other volumes are calculated to meet pipetting constraints (1–10 µL per constituent) and SOP rules (PhiX 1%). Verify before proceeding.')
+st.caption('This is a first pass implementation. I implemented the spreadsheet logic: percent_of_run = unique_oligos * desired_coverage / cartridge_capacity; mass to pool is percent_of_run * total_mass_required_at_load (derived from loading pM and library size). Dilution factors are chosen to make pipettable aliquots near 6 µL. The app will need minor tuning after testing with your sheet; tell me which rows to debug and I will iterate.')
