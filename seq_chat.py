@@ -5,15 +5,15 @@ import io
 st.title("Library Pooling, Dilution, and Loading Calculator")
 
 st.markdown("""
-Paste **tab-separated values (TSV)** from your Google Sheet below.  
-Required columns:  
-**Alias | Insert Size | Unique Oligos | Desired Coverage | Cartridge Capacity | Index Type | i7 Sequence | Qubit Quant (ng/µL)**
+Paste **tab-separated values (TSV)** below with the following columns only:  
+
+**Alias | Library Size (bp) | Unique Oligos | Qubit Quant (ng/µL)**
 """)
 
-# Example TSV input for placeholder
+# Example TSV input
 placeholder_text = (
-    "sampleA\t300\t100000\t7410\t5\tsingle\ti7A\t2.1\n"
-    "sampleB\t350\t200000\t7410\t5\tdual\ti7B\t5.0\n"
+    "sampleA\t300\t100000\t2.1\n"
+    "sampleB\t350\t200000\t5.0\n"
 )
 
 txt = st.text_area(
@@ -21,6 +21,20 @@ txt = st.text_area(
     value=placeholder_text,
     height=200,
     help="Copy from Google Sheets and paste here (tab-separated)."
+)
+
+# Global inputs
+cartridge_capacity = st.selectbox(
+    "Cartridge Capacity (reads)",
+    options=[500_000_000, 1_000_000_000, 2_000_000_000],
+    index=1,
+    format_func=lambda x: f"{x:,}"
+)
+
+coverage = st.number_input(
+    "Desired coverage (applies to all libraries)",
+    value=40,
+    step=5
 )
 
 loading_conc = st.number_input("Desired loading concentration (pM)", value=10.0, step=0.5)
@@ -34,34 +48,25 @@ else:
 if txt.strip():
     try:
         df = pd.read_csv(io.StringIO(txt), sep="\t", header=None)
-        df.columns = [
-            "Alias",
-            "Insert Size",
-            "Unique Oligos",
-            "Desired Coverage",
-            "Cartridge Capacity",
-            "Index Type",
-            "i7 Sequence",
-            "Qubit Quant (ng/µL)"
-        ]
-
-        # Adjust insert size to full library size (include adapters)
-        df["Adapter Length"] = df["Index Type"].apply(lambda x: 124 if str(x).lower() == "single" else 136)
-        df["Library Size"] = df["Insert Size"] + df["Adapter Length"]
+        df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
 
         # Convert ng/µL to nM: (ng/µL * 10^6) / (660 g/mol/bp * bp length)
         df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 1e6) / (660 * df["Library Size"])
 
-        # Mass and volume calculations for desired coverage
-        df["Frac of Cart"] = (df["Unique Oligos"] * df["Desired Coverage"]) / df["Cartridge Capacity"]
-        df["Mass Needed (ng)"] = df["Frac of Cart"] * df["Qubit Quant (ng/µL)"]
+        # Fraction of cartridge (%)
+        df["Frac of Cart (%)"] = (
+            (df["Unique Oligos"] * coverage) / cartridge_capacity * 100
+        ).round(3)
+
+        # Mass and volume (ng, µL)
+        df["Mass Needed (ng)"] = df["Unique Oligos"] * coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
-        # Dilution factors
+        # Dilution factor
         df["Dilution Factor"] = (df["Qubit Conc (nM)"] / loading_conc).apply(lambda x: max(1, round(x)))
         df["Diluted Vol (µL)"] = (df["Volume Needed (µL)"] * df["Dilution Factor"]).apply(lambda x: max(3, round(x, 1)))
 
-        st.subheader("📊 Parsed Input and Calculations")
+        st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
         # Pool concentration (before PhiX)
@@ -70,11 +75,11 @@ if txt.strip():
 
         # Pool dilution
         dilution_factor = pool_conc / (loading_conc * 0.99)
-        diluted_pool_vol = max(4.5, round(30 / (1 + dilution_factor), 1))  # keep in mid-single digits
+        diluted_pool_vol = max(4.5, round(30 / (1 + dilution_factor), 1))  # keep pipetteable
 
         # PhiX addition
         if include_phix:
-            phix_vol = round(diluted_pool_vol * (phix_dilution / 40), 1)  # scaled to ~5.6 µL at 1:40
+            phix_vol = round(diluted_pool_vol * (phix_dilution / 40), 1)
         else:
             phix_vol = 0.0
 
