@@ -110,26 +110,30 @@ if txt.strip():
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # Pooled concentration
+        # Compute pool concentration internally (preserves original float precision)
         total_mass_ng = df["Mass Needed (ng)"].sum()
         total_pooled_volume_uL = df["Diluted Vol (µL)"].sum()
         calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL if total_pooled_volume_uL > 0 else 0.0
 
+        measured_pool_conc_ng_uL_temp = calculated_pool_conc_ng_uL  # internal precise value
+
+        # Weighted average library size
+        weighted_lib_size = (df["Library Size"] * df["Mass Needed (ng)"]).sum() / df["Mass Needed (ng)"].sum()
+
+        # Pool concentration in nM
+        pool_conc_nM_measured = measured_pool_conc_ng_uL_temp * 0.8 * 1e6 / (660 * weighted_lib_size)
+
+        st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc_ng_uL:.3f}")
+        st.write(f"**Measured pool concentration (nM):** {pool_conc_nM_measured:.3f}")
+
+        # Show number_input for user only (does not affect calculation unless user changes)
         measured_pool_conc_ng_uL = st.number_input(
             "Measured pooled library concentration (ng/µL)",
             value=calculated_pool_conc_ng_uL,
             step=0.01
         )
 
-        # Weighted average library size
-        weighted_lib_size = (df["Library Size"] * df["Mass Needed (ng)"]).sum() / df["Mass Needed (ng)"].sum()
-
-        # Pooled nM concentration
-        pool_conc_nM_measured = measured_pool_conc_ng_uL * 0.8 * 1e6 / (660 * weighted_lib_size)
-        st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc_ng_uL:.3f}")
-        st.write(f"**Measured pool concentration (nM):** {pool_conc_nM_measured:.3f}")
-
-        # Pool + PhiX volumes (exact previous formulas to preserve 1.737 nM)
+        # Pool + PhiX volumes (exact formulas)
         V_pool_uL = loading_conc * (100 - phiX_pct) / 100 * final_volume_uL / (pool_conc_nM_measured * 1000)
         if phix_input_type == "1 nM stock":
             phix_stock_pM = 1000 / phix_dilution
