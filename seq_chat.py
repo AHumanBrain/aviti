@@ -210,21 +210,25 @@ else:
                             f"WARNING: required pool volume {V_pool_uL:.2f} µL is greater than "
                             f"available pooled volume {available_pool_uL:.2f} µL. Prepare more pool or adjust plan."
                         )
-#step-by-step instructions
+
 try:
+    # --- Step-by-step instructions ---
     st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
 
-    # compute volumes for Step 5
+    # Compute volumes for Step 5
     pool_phix_mix_uL = total_mix_uL
     naoh_vol_uL = pool_phix_mix_uL
     neutralize_vol_uL = pool_phix_mix_uL
     buffer_vol_uL = final_volume_uL - (pool_phix_mix_uL + naoh_vol_uL + neutralize_vol_uL)
-    
-    # ensure buffer volume is not negative
+
+    # Ensure buffer volume is not negative
     if buffer_vol_uL < 0:
         buffer_vol_uL = 0.0
-        st.warning("Computed loading buffer volume < 0 µL. Check your PhiX fraction and final volume settings.")
+        st.warning(
+            "Computed loading buffer volume < 0 µL. Check your PhiX fraction, final volume, or measured pool concentration."
+        )
 
+    # Step-by-step markdown
     instructions_md = f"""
 1. **Prepare individual libraries**: pipette each library at the **Diluted Vol (µL)** listed above.  
    - Total pooled volume: **{total_pooled_volume_uL:.2f} µL**  
@@ -254,4 +258,3 @@ try:
 
 except Exception as e:
     st.error(f"Error generating step-by-step instructions: {e}")
-
