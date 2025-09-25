@@ -26,7 +26,7 @@ txt = st.text_area(
 # Global inputs
 cartridge_capacity = st.selectbox(
     "Cartridge Capacity (reads)",
-    options=[500_000_000, 1_000_000_000, 2_000_000_000],
+    options=[100_000_000, 500_000_000, 1_000_000_000],
     index=1,
     format_func=lambda x: f"{x:,}"
 )
