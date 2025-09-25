@@ -178,7 +178,7 @@ if txt.strip():
 
 5. **Denature with NaOH**:  
    - Add **{naoh_vol_uL:.2f} µL** of 0.2 N NaOH (equal to pool+PhiX volume), mix gently, spin briefly, and incubate at room temperature for 5 minutes.  
-   - Add **{neutralize_vol_uL:.2f} µL** of pool+PhiX mixture to neutralize.
+   - Add **{neutralize_vol_uL:.2f} µL** of 0.2 M Tris-HCl (pH 7.0) to neutralize.
 
 6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
    - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**  
