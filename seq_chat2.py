@@ -35,7 +35,6 @@ txt = st.text_area(
     help="Copy from Google Sheets and paste here (tab-separated)."
 )
 
-# Global inputs
 cartridge_capacity = st.selectbox(
     "Cartridge Capacity (reads)",
     options=[100_000_000, 500_000_000, 1_000_000_000],
@@ -65,35 +64,32 @@ else:
     phix_input_type = "1 nM stock"
     phix_dilution = 1
 
-final_volume_uL = 1400.0  # total final volume after dilution/neutralization
+final_volume_uL = 1400.0
 
 if txt.strip():
     try:
         df = pd.read_csv(io.StringIO(txt), sep="\t", header=None)
         df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
 
-        # Convert ng/µL to nM: (ng/µL * 10^6) / (660 g/mol/bp * bp length)
+        # Qubit ng/µL → nM
         df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 1e6) / (660 * df["Library Size"])
 
-        # Fraction of cartridge (%)
-        df["Frac of Cart (%)"] = (
-            (df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100
-        ).round(3)
+        # Fraction of cartridge
+        df["Frac of Cart (%)"] = ((df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100).round(3)
 
         # Mass needed
         df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"] / 100)
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
-        # --- Cartridge Utilization Percentage ---
+        # Cartridge utilization
         total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
         utilization_pct = (total_reads_required / cartridge_capacity) * 100
         st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
 
-        # --- Per-library dilution factor calculation ---
+        # Per-library dilution factor
         raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
         dilution_factors = []
         diluted_vols = []
-
         for raw in raw_vols:
             if raw <= 0:
                 d = 1.00
@@ -108,45 +104,36 @@ if txt.strip():
                 diluted = round(raw * d, 2)
             dilution_factors.append(d)
             diluted_vols.append(diluted)
-
         df["Dilution Factor"] = dilution_factors
         df["Diluted Vol (µL)"] = diluted_vols
 
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # Pool concentrations
+        # Pooled concentration
         total_mass_ng = df["Mass Needed (ng)"].sum()
         total_pooled_volume_uL = df["Diluted Vol (µL)"].sum()
+        calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL if total_pooled_volume_uL > 0 else 0.0
 
-        if total_pooled_volume_uL > 0:
-            calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL
-        else:
-            calculated_pool_conc_ng_uL = 0.0
-
-        measured_pool_conc_ng_uL = st.number_input("Measured pooled library concentration (ng/µL)", value=calculated_pool_conc_ng_uL, step=0.01)
+        measured_pool_conc_ng_uL = st.number_input(
+            "Measured pooled library concentration (ng/µL)", value=calculated_pool_conc_ng_uL, step=0.01
+        )
 
         # Weighted average library size
         weighted_lib_size = (df["Library Size"] * df["Mass Needed (ng)"]).sum() / df["Mass Needed (ng)"].sum()
 
-        # Pooled library concentration (nM)
+        # Pooled nM concentration
         pool_conc_nM_measured = measured_pool_conc_ng_uL * 0.8 * 1e6 / (660 * weighted_lib_size)
-
         st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc_ng_uL:.3f}")
         st.write(f"**Measured pool concentration (nM):** {pool_conc_nM_measured:.3f}")
 
-        # --- Compute pool + PhiX volumes ---
-        pool_conc_pM_measured = pool_conc_nM_measured * 1000.0
-        lib_target_pM = loading_conc * (100 - phiX_pct) / 100.0
-        phix_target_pM = loading_conc * phiX_pct / 100.0
-
-        V_pool_uL = lib_target_pM * final_volume_uL / pool_conc_pM_measured
+        # Pool + PhiX volumes using exact previous formulas
+        V_pool_uL = loading_conc * (100 - phiX_pct) / 100 * final_volume_uL / (pool_conc_nM_measured * 1000)
         if phix_input_type == "1 nM stock":
             phix_stock_pM = 1000 / phix_dilution
         else:
             phix_stock_pM = 1 / phix_dilution
-
-        V_phix_uL = phix_target_pM * final_volume_uL / phix_stock_pM
+        V_phix_uL = loading_conc * phiX_pct / 100 * final_volume_uL / phix_stock_pM
         total_mix_uL = V_pool_uL + V_phix_uL
 
         # --- Step-by-step instructions ---
@@ -157,12 +144,9 @@ if txt.strip():
             naoh_vol_uL = pool_phix_mix_uL
             neutralize_vol_uL = pool_phix_mix_uL
             buffer_vol_uL = final_volume_uL - (pool_phix_mix_uL + naoh_vol_uL + neutralize_vol_uL)
-
             if buffer_vol_uL < 0:
                 buffer_vol_uL = 0.0
-                st.warning(
-                    "Computed loading buffer volume < 0 µL. Check PhiX fraction, final volume, or measured pool concentration."
-                )
+                st.warning("Computed loading buffer volume < 0 µL. Check PhiX fraction, final volume, or measured pool concentration.")
 
             instructions_md = f"""
 1. **Prepare individual libraries**: pipette each library at the **Diluted Vol (µL)** listed above.  
@@ -178,7 +162,7 @@ if txt.strip():
 
 5. **Denature with NaOH**:  
    - Add **{naoh_vol_uL:.2f} µL** of 0.2 N NaOH (equal to pool+PhiX volume), mix gently, spin briefly, and incubate at room temperature for 5 minutes.  
-   - Add **{neutralize_vol_uL:.2f} µL** of 0.2 M Tris-HCl (pH 7.0) to neutralize.
+   - Add **{neutralize_vol_uL:.2f} µL** of pool+PhiX mixture to neutralize.
 
 6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
    - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**  
