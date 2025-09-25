@@ -12,8 +12,20 @@ Paste **tab-separated values (TSV)** below with the following columns only:
 
 # Example TSV input
 placeholder_text = (
-    "sampleA\t300\t100000\t2.1\n"
-    "sampleB\t350\t200000\t5.0\n"
+    "1\t285\t116560\t11.00\n"
+    "2\t285\t116560\t7.72\n"
+    "3\t285\t116560\t6.36\n"
+    "4\t285\t116560\t6.25\n"
+    "5\t285\t116560\t4.56\n"
+    "6\t285\t116560\t7.00\n"
+    "7\t245\t19125\t6.13\n"
+    "8\t285\t18097\t6.41\n"
+    "9\t285\t3857\t11.50\n"
+    "10\t285\t79937\t5.86\n"
+    "11\t223\t5460\t20.80\n"
+    "12\t223\t17370\t19.40\n"
+    "13\t223\t673\t15.60\n"
+    "14\t324\t100000\t30.00\n"
 )
 
 txt = st.text_area(
