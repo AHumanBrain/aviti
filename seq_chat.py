@@ -95,52 +95,49 @@ if txt.strip():
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # --- Pool concentration section ---
+        # --- Corrected Pool Concentration ---
         st.subheader("📌 Pool Concentration")
 
-        # Calculated pool concentration (ng/µL) from library volumes
-        calculated_pool_conc = (df["Qubit Quant (ng/µL)"] * df["Volume Needed (µL)"]).sum() / df["Volume Needed (µL)"].sum()
-        st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc:.2f} ng/µL")
+        # Calculated pool concentration (ng/µL) = sum of masses / sum of volumes
+        calculated_pool_conc = df["Mass Needed (ng)"].sum() / df["Volume Needed (µL)"].sum()
+        st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc:.3f} ng/µL")
 
         # Measured pool concentration (ng/µL) input
         measured_pool_conc = st.number_input(
             "Measured pool concentration (ng/µL)",
             min_value=0.0,
             value=float(calculated_pool_conc),
-            step=0.1
+            step=0.01
         )
 
-        # Compute nM using measured pool concentration
+        # Pooled concentration in nM using measured value
         pool_conc_nM = measured_pool_conc * 0.8 * 1e6 / (660 * weighted_avg_size)
         st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM:.2f} nM")
 
-        # Pool dilution
-        dilution_factor = pool_conc_nM / (loading_conc * 0.99)
-        diluted_pool_vol = max(4.5, round(30 / (1 + dilution_factor), 1))  # keep pipetteable
+        # Determine if dilution is needed
+        if pool_conc_nM > loading_conc:
+            dilution_factor = pool_conc_nM / loading_conc
+            diluted_pool_vol = round(df["Volume Needed (µL)"].sum() * dilution_factor, 1)
+            instructions_pool = f"Dilute the pool: **{diluted_pool_vol} µL** pooled libraries."
+        else:
+            instructions_pool = f"No dilution needed; combine **{df['Volume Needed (µL)'].sum():.1f} µL** pool directly."
 
         # PhiX addition
         if include_phix:
-            phix_vol = round(diluted_pool_vol * (phix_dilution / 40), 1)
+            phix_vol = round(df["Volume Needed (µL)"].sum() * (phix_dilution / 40), 1)
         else:
             phix_vol = 0.0
 
-        total_mix = diluted_pool_vol + phix_vol
-        naoh_vol = total_mix
-        tris_vol = total_mix
-        final_vol = 1400
-        buffer_vol = final_vol - (total_mix + naoh_vol + tris_vol)
+        total_mix = df["Volume Needed (µL)"].sum() + phix_vol
 
         st.subheader("🧪 Step-by-step Instructions")
         st.markdown(f"""
-        1. Pool the libraries according to calculated volumes above.  
-        2. Dilute the pool: **{diluted_pool_vol} µL** pooled libraries.  
-        3. Add PhiX: **{phix_vol} µL** ({'diluted PhiX' if phix_dilution > 1 else '1 nM PhiX stock'}).  
-        4. Mix for a total of **{total_mix:.1f} µL**.  
-        5. Add **{naoh_vol:.1f} µL** 0.2 N NaOH, mix, spin, and incubate 5 minutes at room temp.  
-        6. Add **{tris_vol:.1f} µL** 0.2 M pH 7 Tris-HCl to neutralize.  
-        7. Add **{buffer_vol:.1f} µL** loading buffer to bring total volume to {final_vol} µL.  
-        8. Load all **{final_vol} µL** into the cartridge.  
-        """)
+1. Pool the libraries according to calculated volumes above.  
+2. {instructions_pool}  
+3. Add PhiX: **{phix_vol} µL** ({'diluted PhiX' if phix_dilution > 1 else '1 nM PhiX stock'}).  
+4. Mix for a total of **{total_mix:.1f} µL**.  
+5. Load into the cartridge.
+""")
 
     except Exception as e:
         st.error(f"Error parsing TSV: {e}")
