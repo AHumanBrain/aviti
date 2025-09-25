@@ -55,29 +55,26 @@ if txt.strip():
 
         # Fraction of reads for each library (based on desired coverage)
         df["Frac of Cart (%)"] = ((df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100).round(3)
-        df["Read Fraction"] = (df["Frac of Cart (%)"] / df["Frac of Cart (%)"].sum())
+        df["Read Fraction"] = df["Frac of Cart (%)"] / df["Frac of Cart (%)"].sum()
 
         # Weighted average library size
         weighted_avg_size = (df["Library Size"] * df["Read Fraction"]).sum()
 
-        # Updated Mass Needed formula (line 71)
+        # Updated Mass Needed formula
         df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"] / 100)
-        df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
-        # Cartridge Utilization Percentage
-        total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
-        utilization_pct = (total_reads_required / cartridge_capacity) * 100
-        st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
+        # Raw Volumes (pre-dilution) for correct pool concentration
+        df["Raw Vol (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
-        # Per-library dilution factor calculation
-        raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
+        # Volume Needed (with optional per-library dilution for pipette convenience)
+        raw_vols = df["Raw Vol (µL)"].fillna(0).astype(float)
         dilution_factors = []
         diluted_vols = []
 
         for raw in raw_vols:
             if raw <= 0:
-                d = 1.00
-                diluted = 0.00
+                d = 1.0
+                diluted = 0.0
             else:
                 d_min = 1.0 / raw
                 d_max = 10.0 / raw
@@ -90,7 +87,12 @@ if txt.strip():
             diluted_vols.append(diluted)
 
         df["Dilution Factor"] = dilution_factors
-        df["Diluted Vol (µL)"] = diluted_vols
+        df["Volume Needed (µL)"] = diluted_vols  # for display, pipetting guidance
+
+        # Cartridge Utilization Percentage
+        total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
+        utilization_pct = (total_reads_required / cartridge_capacity) * 100
+        st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
 
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
@@ -98,11 +100,11 @@ if txt.strip():
         # --- Corrected Pool Concentration ---
         st.subheader("📌 Pool Concentration")
 
-        # Calculated pool concentration (ng/µL) = sum of masses / sum of volumes
-        calculated_pool_conc = df["Mass Needed (ng)"].sum() / df["Volume Needed (µL)"].sum()
+        # Calculated pool concentration (ng/µL) = sum(Mass Needed) / sum(Raw Volumes)
+        calculated_pool_conc = df["Mass Needed (ng)"].sum() / df["Raw Vol (µL)"].sum()
         st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc:.3f} ng/µL")
 
-        # Measured pool concentration (ng/µL) input
+        # Measured pool concentration input
         measured_pool_conc = st.number_input(
             "Measured pool concentration (ng/µL)",
             min_value=0.0,
@@ -116,19 +118,20 @@ if txt.strip():
 
         # Determine if dilution is needed
         if pool_conc_nM > loading_conc:
+            # calculate dilution factor to reach loading concentration
             dilution_factor = pool_conc_nM / loading_conc
-            diluted_pool_vol = round(df["Volume Needed (µL)"].sum() * dilution_factor, 1)
-            instructions_pool = f"Dilute the pool: **{diluted_pool_vol} µL** pooled libraries."
+            diluted_pool_vol = df["Raw Vol (µL)"].sum() / dilution_factor
+            instructions_pool = f"Dilute the pool: **{diluted_pool_vol:.1f} µL** pooled libraries."
         else:
-            instructions_pool = f"No dilution needed; combine **{df['Volume Needed (µL)'].sum():.1f} µL** pool directly."
+            instructions_pool = f"No dilution needed; combine **{df['Raw Vol (µL)'].sum():.1f} µL** pool directly."
 
         # PhiX addition
         if include_phix:
-            phix_vol = round(df["Volume Needed (µL)"].sum() * (phix_dilution / 40), 1)
+            phix_vol = round(df["Raw Vol (µL)"].sum() * (phix_dilution / 40), 1)
         else:
             phix_vol = 0.0
 
-        total_mix = df["Volume Needed (µL)"].sum() + phix_vol
+        total_mix = df["Raw Vol (µL)"].sum() + phix_vol
 
         st.subheader("🧪 Step-by-step Instructions")
         st.markdown(f"""
