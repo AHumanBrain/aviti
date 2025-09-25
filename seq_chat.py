@@ -210,8 +210,8 @@ else:
                             f"WARNING: required pool volume {V_pool_uL:.2f} µL is greater than "
                             f"available pooled volume {available_pool_uL:.2f} µL. Prepare more pool or adjust plan."
                         )
+#step-by-step instructions
 try:
-    # --- Step-by-step instructions ---
     st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
 
     # compute volumes for Step 5
