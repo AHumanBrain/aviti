@@ -54,21 +54,14 @@ if txt.strip():
         df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
 
         # Fraction of reads for each library (based on desired coverage)
-        df["Read Fraction"] = (df["Unique Oligos"] * desired_coverage) / (df["Unique Oligos"] * desired_coverage).sum()
+        df["Frac of Cart (%)"] = ((df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100).round(3)
+        df["Read Fraction"] = (df["Frac of Cart (%)"] / df["Frac of Cart (%)"].sum())
 
         # Weighted average library size
         weighted_avg_size = (df["Library Size"] * df["Read Fraction"]).sum()
 
-        # Convert ng/µL to nM using weighted average library size
-        df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 0.8 * 1e6) / (660 * weighted_avg_size)
-
-        # Fraction of cartridge (%)
-        df["Frac of Cart (%)"] = (
-            (df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100
-        ).round(3)
-
-        # Mass and volume (ng, µL)
-        df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * ((df["Frac of Cart (%)"]) / 100) #df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
+        # Updated Mass Needed formula (line 71)
+        df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"] / 100)
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
         # Cartridge Utilization Percentage
@@ -102,9 +95,24 @@ if txt.strip():
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # Pool concentration using weighted average
-        pool_conc_nM = (df["Qubit Conc (nM)"] * df["Read Fraction"]).sum()
-        st.write(f"**Pooled library concentration (nM):** {pool_conc_nM:.2f} nM")
+        # --- Pool concentration section ---
+        st.subheader("📌 Pool Concentration")
+
+        # Calculated pool concentration (ng/µL) from library volumes
+        calculated_pool_conc = (df["Qubit Quant (ng/µL)"] * df["Volume Needed (µL)"]).sum() / df["Volume Needed (µL)"].sum()
+        st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc:.2f} ng/µL")
+
+        # Measured pool concentration (ng/µL) input
+        measured_pool_conc = st.number_input(
+            "Measured pool concentration (ng/µL)",
+            min_value=0.0,
+            value=float(calculated_pool_conc),
+            step=0.1
+        )
+
+        # Compute nM using measured pool concentration
+        pool_conc_nM = measured_pool_conc * 0.8 * 1e6 / (660 * weighted_avg_size)
+        st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM:.2f} nM")
 
         # Pool dilution
         dilution_factor = pool_conc_nM / (loading_conc * 0.99)
