@@ -31,10 +31,13 @@ cartridge_capacity = st.selectbox(
     format_func=lambda x: f"{x:,}"
 )
 
-coverage = st.number_input(
-    "Desired coverage (applies to all libraries)",
+# Global desired coverage
+desired_coverage = st.number_input(
+    "Desired Coverage (applied to all libraries)",
+    min_value=1,
+    max_value=1000,
     value=40,
-    step=5
+    step=1
 )
 
 loading_conc = st.number_input("Desired loading concentration (pM)", value=10.0, step=0.5)
