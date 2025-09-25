@@ -2,36 +2,59 @@ import streamlit as st
 import pandas as pd
 import io
 
+st.set_page_config(layout="wide")
 st.title("Library Pooling, Dilution, and Loading Calculator")
 
 st.markdown("""
-Paste **tab-separated values (TSV)** below with the following columns only:  
+Paste **tab-separated values (TSV)** below with the following columns only:
 
 **Alias | Library Size (bp) | Unique Oligos | Qubit Quant (ng/µL)**
+
+This calculator will:
+- compute Mass Needed using your formula,
+- show raw and pipette-friendly (diluted) volumes,
+- compute pool concentration using the **sum of masses / sum of diluted volumes** (the volumes you actually combine),
+- convert to nM using your weighted average size formula,
+- compute how much pool + PhiX to combine for a given target loading concentration (pM) after dilution to a final volume.
 """)
 
-# Example TSV input
+# --------------------
+# Example TSV (you can replace with your 14-row test)
+# --------------------
 placeholder_text = (
-    "sampleA\t300\t100000\t2.1\n"
-    "sampleB\t350\t200000\t5.0\n"
+    "1\t285\t116560\t11.00\n"
+    "2\t285\t116560\t7.72\n"
+    "3\t285\t116560\t6.36\n"
+    "4\t285\t116560\t6.25\n"
+    "5\t285\t116560\t4.56\n"
+    "6\t285\t116560\t7.00\n"
+    "7\t245\t19125\t6.13\n"
+    "8\t285\t18097\t6.41\n"
+    "9\t285\t3857\t11.50\n"
+    "10\t285\t79937\t5.86\n"
+    "11\t223\t5460\t20.80\n"
+    "12\t223\t17370\t19.40\n"
+    "13\t223\t673\t15.60\n"
+    "14\t324\t100000\t30.00\n"
 )
 
 txt = st.text_area(
     "Paste TSV here",
     value=placeholder_text,
-    height=200,
+    height=300,
     help="Copy from Google Sheets and paste here (tab-separated)."
 )
 
-# Global inputs
+# --------------------
+# Global controls
+# --------------------
 cartridge_capacity = st.selectbox(
     "Cartridge Capacity (reads)",
     options=[100_000_000, 500_000_000, 1_000_000_000],
-    index=1,
+    index=0,  # default 100M to match the ~0.4 ng/µL expectation for your test TSV
     format_func=lambda x: f"{x:,}"
 )
 
-# Global desired coverage
 desired_coverage = st.number_input(
     "Desired Coverage (applied to all libraries)",
     min_value=1,
@@ -40,7 +63,9 @@ desired_coverage = st.number_input(
     step=1
 )
 
-loading_conc = st.number_input("Desired loading concentration (pM)", value=10.0, step=0.5)
+loading_conc_pM = st.number_input("Target loading concentration (pM)", value=10.0, step=0.5)
+
+# PhiX options
 include_phix = st.checkbox("Include PhiX spike-in", value=True)
 phix_input_type = st.radio("PhiX stock type", ["1 nM stock", "Dilution factor"], horizontal=True)
 if phix_input_type == "Dilution factor":
@@ -48,106 +73,190 @@ if phix_input_type == "Dilution factor":
 else:
     phix_dilution = 1
 
-if txt.strip():
+# How much PhiX (molar %) do you want in the pre-denature mix? (user-friendly)
+phiX_pct = st.number_input("Desired PhiX (molar %) in pre-denature mix", min_value=0.0, max_value=50.0, value=10.0, step=0.5)
+
+final_volume_uL = st.number_input("Final volume after neutralization/dilution (µL)", value=1400.0, step=10.0)
+
+# --------------------
+# Parse TSV and calculations
+# --------------------
+if not txt.strip():
+    st.info("Paste TSV values to get started.")
+else:
     try:
-        df = pd.read_csv(io.StringIO(txt), sep="\t", header=None)
-        df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
-
-        # Convert ng/µL to nM for each library
-        df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 1e6) / (660 * df["Library Size"])
-
-        # Fraction of cartridge (%)
-        df["Frac of Cart (%)"] = (
-            (df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100
-        ).round(3)
-
-        # Mass and volume (ng, µL) - updated formula
-        df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * ((df["Frac of Cart (%)"]) / 100)
-        df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
-
-        # --- Cartridge Utilization Percentage ---
-        total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
-        utilization_pct = (total_reads_required / cartridge_capacity) * 100
-        st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
-
-        # --- Per-library dilution factor calculation ---
-        raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
-        dilution_factors = []
-        diluted_vols = []
-
-        for raw in raw_vols:
-            if raw <= 0:
-                d = 1.00
-                diluted = 0.00
-            else:
-                # calculate dilution factor ensuring diluted volume between 1–10 µL
-                d_min = 1.0 / raw
-                d_max = 10.0 / raw
-                d = max(d_min, 1.0)  # must be at least 1
-                if d > d_max:
-                    d = d_max
-                d = round(d, 2)
-                diluted = round(raw * d, 2)
-            dilution_factors.append(d)
-            diluted_vols.append(diluted)
-
-        df["Dilution Factor"] = dilution_factors
-        df["Diluted Vol (µL)"] = diluted_vols
-
-        # --- Pool concentration calculation (fixed) ---
-        total_mass_ng = df["Mass Needed (ng)"].sum()
-        total_volume_uL = df["Volume Needed (µL)"].sum()   # use actual pipetted volumes
-
-        pool_conc_ng_uL = total_mass_ng / total_volume_uL
-
-        # Weighted average library size
-        weighted_avg_size = (
-            (df["Library Size"] * (df["Unique Oligos"] * desired_coverage)).sum()
-            / (df["Unique Oligos"] * desired_coverage).sum()
-        )
-
-        # Convert to nM
-        pool_conc_nM = pool_conc_ng_uL * 0.8 * 1e6 / (660 * weighted_avg_size)
-
-        st.subheader("📊 Input and Calculations")
-        st.dataframe(df)
-
-        # --- Pool concentration display ---
-        st.subheader("📌 Pool Concentration")
-        st.write(f"**Total pooled volume:** {total_volume_uL:.2f} µL")
-        st.write(f"**Calculated pool concentration (ng/µL):** {pool_conc_ng_uL:.3f} ng/µL")
-
-        measured_pool_conc = st.number_input(
-            "Measured pool concentration (ng/µL)",
-            min_value=0.0,
-            value=float(pool_conc_ng_uL),
-            step=0.01
-        )
-
-        pool_conc_nM = measured_pool_conc * 0.8 * 1e6 / (660 * weighted_avg_size)
-        st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM:.2f} nM")
-
-        # --- Step-by-step Instructions ---
-        st.subheader("🧪 Step-by-step Instructions")
-
-        if include_phix:
-            # Simple pooling: combine pooled library with PhiX directly
-            # Example: 7.3 µL pool + 1.4 µL PhiX
-            pool_vol_for_loading = 7.3  # you could compute this dynamically
-            phix_vol = 1.4
-            st.markdown(f"""
-            1. Pool the libraries according to calculated volumes above.  
-            2. Take **{pool_vol_for_loading:.1f} µL** pooled libraries (≈ {pool_conc_nM:.1f} nM).  
-            3. Add **{phix_vol:.1f} µL** 1 nM PhiX.  
-            4. Mix gently.  
-            5. Load directly at **{loading_conc:.1f} pM** without further dilution.  
-            """)
+        df = pd.read_csv(io.StringIO(txt.strip()), sep="\t", header=None)
+        if df.shape[1] != 4:
+            st.error("TSV must have exactly 4 columns: Alias, Library Size (bp), Unique Oligos, Qubit Quant (ng/µL)")
         else:
-            st.markdown(f"""
-            1. Pool the libraries according to calculated volumes above.  
-            2. Use **{total_volume_uL:.1f} µL** pooled libraries at {pool_conc_nM:.2f} nM.  
-            3. Dilute/adjust if necessary for {loading_conc:.1f} pM loading.  
-            """)
+            df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
+
+            # Read fraction (for weighted average size): fraction of reads coming from each library
+            df["Read Weight"] = df["Unique Oligos"] * desired_coverage
+            df["Read Fraction"] = df["Read Weight"] / df["Read Weight"].sum()
+
+            # Weighted average library size (bp)
+            weighted_avg_size = (df["Library Size"] * df["Read Fraction"]).sum()
+
+            # Mass Needed (ng) using your requested formula (line 71)
+            # df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"] / 100)
+            # First compute Frac of Cartridge (%) (how much of the cartridge each library consumes)
+            df["Frac of Cart (%)"] = ((df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100).round(6)
+            df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"] / 100)
+
+            # Raw volume required (µL) to deliver the Mass Needed from the undiluted stock
+            df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
+
+            # Per-library pipette-friendly dilution factor (so small volumes are pipettable)
+            raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
+            dilution_factors = []
+            diluted_vols = []
+            for raw in raw_vols:
+                if raw <= 0:
+                    d = 1.0
+                    diluted = 0.0
+                else:
+                    d_min = 1.0 / raw        # makes raw * d >= 1 µL
+                    d_max = 10.0 / raw       # makes raw * d <= 10 µL
+                    d = max(d_min, 1.0)      # at least 1x
+                    if d > d_max:
+                        d = d_max
+                    d = round(d, 2)
+                    diluted = round(raw * d, 2)
+                dilution_factors.append(d)
+                diluted_vols.append(diluted)
+
+            df["Dilution Factor"] = dilution_factors
+            df["Diluted Vol (µL)"] = diluted_vols
+
+            # --- Display Input & Calculations table (explicitly include Diluted Vol so you can see it) ---
+            display_cols = [
+                "Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)",
+                "Frac of Cart (%)", "Mass Needed (ng)", "Volume Needed (µL)",
+                "Dilution Factor", "Diluted Vol (µL)"
+            ]
+            st.subheader("📊 Input and Calculations")
+            st.dataframe(df[display_cols].style.format({
+                "Qubit Quant (ng/µL)": "{:.2f}",
+                "Frac of Cart (%)": "{:.6f}",
+                "Mass Needed (ng)": "{:.6f}",
+                "Volume Needed (µL)": "{:.6f}",
+                "Dilution Factor": "{:.2f}",
+                "Diluted Vol (µL)": "{:.2f}"
+            }))
+
+            # ---------------------
+            # Pool calculations (use diluted volumes — the volumes you will actually pipette & combine)
+            # ---------------------
+            total_mass_ng = df["Mass Needed (ng)"].sum()
+            total_pooled_volume_uL = df["Diluted Vol (µL)"].sum()   # **use Diluted Vol (µL)** per your request
+
+            if total_pooled_volume_uL <= 0:
+                st.error("Total pooled volume is zero — check your inputs/Qubit concentrations.")
+            else:
+                pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL
+
+                # Convert to nM using measured or calculated ng/µL and your formula
+                # Show calculated value, then let user override with measured value
+                st.subheader("📌 Pool Concentration (summary)")
+                st.write(f"**Total mass pooled:** {total_mass_ng:.6f} ng")
+                st.write(f"**Total pooled volume (sum of Diluted Vol):** {total_pooled_volume_uL:.2f} µL")
+                st.write(f"**Calculated pool concentration (ng/µL)** (sum masses / sum diluted vols): **{pool_conc_ng_uL:.4f} ng/µL**")
+
+                measured_pool_conc = st.number_input(
+                    "Measured pool concentration (ng/µL) — enter your Qubit reading (or use calculated value)",
+                    min_value=0.0,
+                    value=float(round(pool_conc_ng_uL, 4)),
+                    step=0.01
+                )
+
+                # weighted_avg_size already computed above
+                pool_conc_nM_measured = measured_pool_conc * 0.8 * 1e6 / (660 * weighted_avg_size)
+                st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM_measured:.3f} nM")
+                st.write(f"**Weighted average library size used (bp):** {weighted_avg_size:.1f} bp")
+
+                # ---------------------
+                # Compute volumes needed to reach target loading concentration (pM) after dilution to final volume
+                # V_pool = (target_pM * final_vol_uL) / (pool_conc_nM_measured * 1000)
+                # (convert pool nM -> pM by *1000)
+                # ---------------------
+                if pool_conc_nM_measured <= 0:
+                    st.warning("Measured pool concentration (nM) must be > 0 to compute required volumes.")
+                else:
+                    pool_conc_pM_measured = pool_conc_nM_measured * 1000.0
+                    # Volume of pooled library (µL) required to reach loading_conc_pM after dilution to final_volume_uL
+                    V_pool_uL = (loading_conc_pM * final_volume_uL) / pool_conc_pM_measured
+                    V_pool_uL = float(V_pool_uL)
+
+                    # Compute PhiX volume to reach desired molar fraction (phiX_pct)
+                    if include_phix and phiX_pct > 0:
+                        p_frac = phiX_pct / 100.0
+                        # estimate PhiX stock concentration (nM)
+                        if phix_input_type == "1 nM stock":
+                            C_phix_nM = 1.0
+                        else:
+                            # assume 1 nM stock diluted by factor
+                            C_phix_nM = 1.0 / max(1.0, float(phix_dilution))
+                        C_pool_nM = pool_conc_nM_measured
+
+                        # Solve for V_phix: p_frac = (C_phix * V_phix) / (C_pool * V_pool + C_phix * V_phix)
+                        # => V_phix = p_frac * C_pool * V_pool / (C_phix * (1 - p_frac))
+                        denom = C_phix_nM * (1.0 - p_frac)
+                        if denom <= 0:
+                            V_phix_uL = 0.0
+                        else:
+                            V_phix_uL = (p_frac * C_pool_nM * V_pool_uL) / denom
+                        V_phix_uL = float(V_phix_uL)
+                    else:
+                        V_phix_uL = 0.0
+
+                    total_mix_uL = V_pool_uL + V_phix_uL
+
+                    # Check available pooled volume vs required pool volume
+                    available_pool_uL = total_pooled_volume_uL
+                    shortage_msg = ""
+                    if V_pool_uL > available_pool_uL:
+                        shortage_msg = (
+                            f"WARNING: required pool volume {V_pool_uL:.2f} µL is greater than "
+                            f"available pooled volume {available_pool_uL:.2f} µL. You will need to prepare more pool or adjust plan."
+                        )
+
+                    # Present results
+                    st.subheader("🔢 Computed mixing volumes")
+                    st.write(f"**Volume of pooled library to use (µL)** to reach {loading_conc_pM:.1f} pM after dilution to {final_volume_uL:.0f} µL: **{V_pool_uL:.2f} µL**")
+                    if include_phix and V_phix_uL > 0:
+                        st.write(f"**PhiX volume (µL)** to approximate {phiX_pct:.1f}% molar PhiX in the pre-denature mix: **{V_phix_uL:.2f} µL**")
+                    else:
+                        st.write("**PhiX volume (µL):** Not included (PhiX disabled or 0%).")
+                    st.write(f"**Total pre-denature mix volume:** {total_mix_uL:.2f} µL")
+                    if shortage_msg:
+                        st.warning(shortage_msg)
+
+                    # ---------------------
+                    # Step-by-step instructions (non-hazardous, high-level)
+                    # ---------------------
+                    st.subheader("🧪 Step-by-step (high-level / follow your lab SOP for denature/dilute steps)")
+                    # Provide the exact numbers we computed but avoid giving hazardous experimental parameters (e.g., chemical volumes or incubation times).
+                    instructions_md = f"""
+1. **Prepare individual libraries**: using the table above, prepare each library at the **Diluted Vol (µL)** listed (these are the pipette-friendly aliquots that together form your pool).  
+   - **Total pooled volume available:** **{available_pool_uL:.2f} µL**  
+   - **Total mass pooled:** **{total_mass_ng:.6f} ng**
+
+2. **Combine pooled libraries**: combine the aliquots (the `Diluted Vol (µL)` values) into a single tube. Mix gently.
+
+3. **Measure the pooled concentration** (Qubit or equivalent). Enter the measured pool concentration (ng/µL) in the "Measured pool concentration" box above if it differs from the calculated value.
+
+4. **Mix pool + PhiX** (pre-denaturation): transfer **{V_pool_uL:.2f} µL** of the pooled library and **{V_phix_uL:.2f} µL** PhiX (if using) into a clean tube.  
+   - If PhiX is included, this approximates **{phiX_pct:.1f}%** molar PhiX in the pre-denature mix.
+
+5. **Denature and dilute to final volume**: follow *your lab’s standard denaturation & neutralization protocol* (do **not** substitute procedures from the web). After denaturation/neutralization, dilute the reaction to **{final_volume_uL:.0f} µL** total volume.  
+   - The small pre-denature mix volume above (e.g., ~7–10 µL) will be diluted into the final volume to reach the **{loading_conc_pM:.1f} pM** loading concentration.
+
+6. **Quality check & load**: verify final concentration by your standard QC method if required, and load according to your sequencer’s instructions.
+
+> Note: If the required pooled volume ({V_pool_uL:.2f} µL) is greater than the available pooled volume ({available_pool_uL:.2f} µL), you'll need to generate more pooled library (repeat pooling from the prepared aliquots or re-pool with adjusted volumes) or adjust the target loading concentration / final volume.
+"""
+                    st.markdown(instructions_md)
 
     except Exception as e:
-        st.error(f"Error parsing TSV: {e}")
+        st.error(f"Error parsing TSV or computing values: {e}")
