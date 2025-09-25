@@ -32,7 +32,7 @@ cartridge_capacity = st.selectbox(
 )
 
 # Global desired coverage
-coverage = st.number_input(
+desired_coverage = st.number_input(
     "Desired Coverage (applied to all libraries)",
     min_value=1,
     max_value=1000,
@@ -58,11 +58,11 @@ if txt.strip():
 
         # Fraction of cartridge (%)
         df["Frac of Cart (%)"] = (
-            (df["Unique Oligos"] * coverage) / cartridge_capacity * 100
+            (df["Unique Oligos"] * desired_coverage) / cartridge_capacity * 100
         ).round(3)
 
         # Mass and volume (ng, µL)
-        df["Mass Needed (ng)"] = 9.8*(250/(df["Library Size"]-124)*df["Frac of Cart (%)"]/100) #correct calculation but inconsistent with google sheet calculator df["Unique Oligos"] * coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
+        df["Mass Needed (ng)"] = 9.8*(250/(df["Library Size"]-124)*df["Frac of Cart (%)"]/100) #correct calculation but inconsistent with google sheet calculator df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
 
