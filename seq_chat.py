@@ -90,6 +90,20 @@ if txt.strip():
         df["Dilution Factor"] = dilution_factors
         df["Diluted Vol (µL)"] = diluted_vols  # for user pipetting guidance
 
+        # Use actual volumes that will be pipetted for pooling
+        df["Pool Vol (µL)"] = df["Volume Needed (µL)"]  # the physical volume to pipette
+        
+        # Sum mass and pool volume
+        total_mass_ng = df["Mass Needed (ng)"].sum()
+        total_volume_uL = df["Pool Vol (µL)"].sum()
+        
+        # Pool concentration (ng/µL)
+        pool_conc_ng_uL = total_mass_ng / total_volume_uL
+        
+        # Convert to nM using measured or calculated ng/µL
+        pool_conc_nM = pool_conc_ng_uL * 0.8 * 1e6 / (660 * weighted_avg_size)
+
+
         # Cartridge Utilization Percentage
         total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
         utilization_pct = (total_reads_required / cartridge_capacity) * 100
@@ -100,6 +114,18 @@ if txt.strip():
 
         # --- Corrected Pool Concentration ---
         st.subheader("📌 Pool Concentration")
+        st.write(f"**Calculated pool concentration (ng/µL):** {pool_conc_ng_uL:.2f} ng/µL")
+        
+        measured_pool_conc = st.number_input(
+            "Measured pool concentration (ng/µL)",
+            min_value=0.0,
+            value=float(pool_conc_ng_uL),
+            step=0.1
+        )
+        
+        pool_conc_nM = measured_pool_conc * 0.8 * 1e6 / (660 * weighted_avg_size)
+        st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM:.2f} nM")
+
 
         # Use Mass Needed / sum of actual volumes to be combined
         total_mass_ng = df["Mass Needed (ng)"].sum()
