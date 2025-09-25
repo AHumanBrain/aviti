@@ -228,7 +228,6 @@ try:
             "Computed loading buffer volume < 0 µL. Check your PhiX fraction, final volume, or measured pool concentration."
         )
 
-    # Step-by-step markdown
     instructions_md = f"""
 1. **Prepare individual libraries**: pipette each library at the **Diluted Vol (µL)** listed above.  
    - Total pooled volume: **{total_pooled_volume_uL:.2f} µL**  
