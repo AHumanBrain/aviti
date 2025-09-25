@@ -53,8 +53,14 @@ if txt.strip():
         df = pd.read_csv(io.StringIO(txt), sep="\t", header=None)
         df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
 
-        # Convert ng/µL to nM: (ng/µL * 10^6) / (660 g/mol/bp * bp length)
-        df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 1e6) / (660 * df["Library Size"])
+        # Fraction of reads for each library (based on desired coverage)
+        df["Read Fraction"] = (df["Unique Oligos"] * desired_coverage) / (df["Unique Oligos"] * desired_coverage).sum()
+
+        # Weighted average library size
+        weighted_avg_size = (df["Library Size"] * df["Read Fraction"]).sum()
+
+        # Convert ng/µL to nM using weighted average library size
+        df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 0.8 * 1e6) / (660 * weighted_avg_size)
 
         # Fraction of cartridge (%)
         df["Frac of Cart (%)"] = (
@@ -62,50 +68,46 @@ if txt.strip():
         ).round(3)
 
         # Mass and volume (ng, µL)
-        df["Mass Needed (ng)"] = 9.8*(250/(df["Library Size"]-124)*df["Frac of Cart (%)"]/100) #correct calculation but inconsistent with google sheet calculator df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
+        df["Mass Needed (ng)"] = df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
-
-        # --- Cartridge Utilization Percentage ---
+        # Cartridge Utilization Percentage
         total_reads_required = (df["Unique Oligos"].astype(float) * desired_coverage).sum()
         utilization_pct = (total_reads_required / cartridge_capacity) * 100
         st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
-    
-        # --- Per-library dilution factor calculation ---
+
+        # Per-library dilution factor calculation
         raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
         dilution_factors = []
         diluted_vols = []
-    
+
         for raw in raw_vols:
             if raw <= 0:
                 d = 1.00
                 diluted = 0.00
             else:
-                # calculate dilution factor ensuring diluted volume between 1–10 µL
                 d_min = 1.0 / raw
                 d_max = 10.0 / raw
-                d = max(d_min, 1.0)  # must be at least 1
+                d = max(d_min, 1.0)
                 if d > d_max:
                     d = d_max
                 d = round(d, 2)
                 diluted = round(raw * d, 2)
             dilution_factors.append(d)
             diluted_vols.append(diluted)
-    
+
         df["Dilution Factor"] = dilution_factors
         df["Diluted Vol (µL)"] = diluted_vols
 
-
-        
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # Pool concentration (before PhiX)
-        pool_conc = df["Qubit Conc (nM)"].mean()
-        st.write(f"**Pooled library concentration:** {pool_conc:.2f} nM")
+        # Pool concentration using weighted average
+        pool_conc_nM = (df["Qubit Conc (nM)"] * df["Read Fraction"]).sum()
+        st.write(f"**Pooled library concentration (nM):** {pool_conc_nM:.2f} nM")
 
         # Pool dilution
-        dilution_factor = pool_conc / (loading_conc * 0.99)
+        dilution_factor = pool_conc_nM / (loading_conc * 0.99)
         diluted_pool_vol = max(4.5, round(30 / (1 + dilution_factor), 1))  # keep pipetteable
 
         # PhiX addition
