@@ -211,49 +211,46 @@ else:
                             f"available pooled volume {available_pool_uL:.2f} µL. Prepare more pool or adjust plan."
                         )
 
-    try:
-        # --- Step-by-step instructions ---
-        st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
-    
-        # Compute volumes for Step 5
-        pool_phix_mix_uL = total_mix_uL
-        naoh_vol_uL = pool_phix_mix_uL
-        neutralize_vol_uL = pool_phix_mix_uL
-        buffer_vol_uL = final_volume_uL - (pool_phix_mix_uL + naoh_vol_uL + neutralize_vol_uL)
-    
-        # Ensure buffer volume is not negative
-        if buffer_vol_uL < 0:
-            buffer_vol_uL = 0.0
-            st.warning(
-                "Computed loading buffer volume < 0 µL. Check your PhiX fraction, final volume, or measured pool concentration."
-            )
-    
-        instructions_md = f"""
-    1. **Prepare individual libraries**: pipette each library at the **Diluted Vol (µL)** listed above.  
-       - Total pooled volume: **{total_pooled_volume_uL:.2f} µL**  
-       - Total mass pooled: **{total_mass_ng:.6f} ng**
-    
-    2. **Combine pooled libraries** into a single tube. Mix gently.
-    
-    3. **Measure pooled concentration** (Qubit or equivalent) and update the "Measured pool concentration" if different.
-    
-    4. **Mix pool + PhiX**: transfer **{V_pool_uL:.2f} µL** of the pooled library and **{V_phix_uL:.2f} µL** PhiX (if using) into a clean tube.  
-       - This achieves ~{phiX_pct:.1f}% PhiX in the pre-denature mix.  
-       - Total pool+PhiX mixture: **{pool_phix_mix_uL:.2f} µL**
-    
-    5. **Denature with NaOH**:  
-       - Add **{naoh_vol_uL:.2f} µL** of 0.2 N NaOH (equal to pool+PhiX volume), mix gently, spin briefly, and incubate at room temperature for 5 minutes.  
-       - Add **{neutralize_vol_uL:.2f} µL** of pool+PhiX mixture to neutralize.
-    
-    6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
-       - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**  
-    
-    7. **Load** all **{final_volume_uL:.0f} µL** into the cartridge according to your sequencer’s SOP.
-    
-    > Note: If required pool volume exceeds available pooled volume, prepare more pool or adjust plan.
-    """
-    
-        st.markdown(instructions_md)
-    
-    except Exception as e:
-        st.error(f"Error generating step-by-step instructions: {e}")
+# --- Step-by-step instructions ---
+try:
+    st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
+
+    pool_phix_mix_uL = total_mix_uL
+    naoh_vol_uL = pool_phix_mix_uL
+    neutralize_vol_uL = pool_phix_mix_uL
+    buffer_vol_uL = final_volume_uL - (pool_phix_mix_uL + naoh_vol_uL + neutralize_vol_uL)
+    if buffer_vol_uL < 0:
+        buffer_vol_uL = 0.0
+        st.warning(
+            "Computed loading buffer volume < 0 µL. Check your PhiX fraction, final volume, or measured pool concentration."
+        )
+
+    instructions_md = f"""
+1. **Prepare individual libraries**: pipette each library at the **Diluted Vol (µL)** listed above.  
+   - Total pooled volume: **{total_pooled_volume_uL:.2f} µL**  
+   - Total mass pooled: **{total_mass_ng:.6f} ng**
+
+2. **Combine pooled libraries** into a single tube. Mix gently.
+
+3. **Measure pooled concentration** (Qubit or equivalent) and update the "Measured pool concentration" if different.
+
+4. **Mix pool + PhiX**: transfer **{V_pool_uL:.2f} µL** of the pooled library and **{V_phix_uL:.2f} µL** PhiX (if using) into a clean tube.  
+   - This achieves ~{phiX_pct:.1f}% PhiX in the pre-denature mix.  
+   - Total pool+PhiX mixture: **{pool_phix_mix_uL:.2f} µL**
+
+5. **Denature with NaOH**:  
+   - Add **{naoh_vol_uL:.2f} µL** of 0.2 N NaOH (equal to pool+PhiX volume), mix gently, spin briefly, and incubate at room temperature for 5 minutes.  
+   - Add **{neutralize_vol_uL:.2f} µL** of pool+PhiX mixture to neutralize.
+
+6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
+   - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**  
+
+7. **Load** all **{final_volume_uL:.0f} µL** into the cartridge according to your sequencer’s SOP.
+
+> Note: If required pool volume exceeds available pooled volume, prepare more pool or adjust plan.
+"""
+    st.markdown(instructions_md)
+
+except Exception as e:
+    st.error(f"Error generating step-by-step instructions: {e}")
+
