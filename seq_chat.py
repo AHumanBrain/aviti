@@ -32,7 +32,7 @@ cartridge_capacity = st.selectbox(
 )
 
 # Global desired coverage
-desired_coverage = st.number_input(
+coverage = st.number_input(
     "Desired Coverage (applied to all libraries)",
     min_value=1,
     max_value=1000,
