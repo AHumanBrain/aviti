@@ -211,14 +211,6 @@ else:
                             f"available pooled volume {available_pool_uL:.2f} µL. Prepare more pool or adjust plan."
                         )
 
-                    # Display
-                    st.subheader("🔢 Computed mixing volumes")
-                    st.write(f"**Volume of pooled library to use (µL):** {V_pool_uL:.2f}")
-                    st.write(f"**PhiX volume (µL):** {V_phix_uL:.2f} (for {phiX_pct:.1f}% spike-in)")
-                    st.write(f"**Total pre-denature mix volume (µL):** {total_mix_uL:.2f}")
-                    if shortage_msg:
-                        st.warning(shortage_msg)
-
                     # --- Step-by-step instructions ---
                     st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
                     instructions_md = f"""
