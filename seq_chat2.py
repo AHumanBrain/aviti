@@ -116,7 +116,9 @@ if txt.strip():
         calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL if total_pooled_volume_uL > 0 else 0.0
 
         measured_pool_conc_ng_uL = st.number_input(
-            "Measured pooled library concentration (ng/µL)", value=calculated_pool_conc_ng_uL, step=0.01
+            "Measured pooled library concentration (ng/µL)",
+            value=calculated_pool_conc_ng_uL,
+            step=0.01
         )
 
         # Weighted average library size
@@ -127,7 +129,7 @@ if txt.strip():
         st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc_ng_uL:.3f}")
         st.write(f"**Measured pool concentration (nM):** {pool_conc_nM_measured:.3f}")
 
-        # Pool + PhiX volumes using exact previous formulas
+        # Pool + PhiX volumes (exact previous formulas to preserve 1.737 nM)
         V_pool_uL = loading_conc * (100 - phiX_pct) / 100 * final_volume_uL / (pool_conc_nM_measured * 1000)
         if phix_input_type == "1 nM stock":
             phix_stock_pM = 1000 / phix_dilution
@@ -136,7 +138,7 @@ if txt.strip():
         V_phix_uL = loading_conc * phiX_pct / 100 * final_volume_uL / phix_stock_pM
         total_mix_uL = V_pool_uL + V_phix_uL
 
-        # --- Step-by-step instructions ---
+        # Step-by-step instructions
         try:
             st.subheader("🧪 Step-by-step (high-level / follow your lab SOP)")
 
