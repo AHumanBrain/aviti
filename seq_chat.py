@@ -10,14 +10,6 @@ Paste **tab-separated values (TSV)** below with the following columns only:
 
 **Alias | Library Size (bp) | Unique Oligos | Qubit Quant (ng/µL)**
 
-This calculator will:
-- compute Mass Needed using your formula,
-- show raw and pipette-friendly (diluted) volumes,
-- compute pool concentration using the **sum of masses / sum of diluted volumes** (the volumes you actually combine),
-- convert to nM using your weighted average size formula,
-- compute how much pool + PhiX to combine for a given target loading concentration (pM) after dilution to a final volume.
-""")
-
 # --------------------
 # Example TSV
 # --------------------
