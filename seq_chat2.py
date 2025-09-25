@@ -10,7 +10,6 @@ Paste **tab-separated values (TSV)** below with the following columns only:
 **Alias | Library Size (bp) | Unique Oligos | Qubit Quant (ng/µL)**
 """)
 
-# Example TSV input
 placeholder_text = (
     "1\t285\t116560\t11.00\n"
     "2\t285\t116560\t7.72\n"
@@ -71,7 +70,7 @@ if txt.strip():
         df = pd.read_csv(io.StringIO(txt), sep="\t", header=None)
         df.columns = ["Alias", "Library Size", "Unique Oligos", "Qubit Quant (ng/µL)"]
 
-        # Qubit ng/µL → nM
+        # Convert ng/uL to nM
         df["Qubit Conc (nM)"] = (df["Qubit Quant (ng/µL)"] * 1e6) / (660 * df["Library Size"])
 
         # Fraction of cartridge
@@ -86,14 +85,14 @@ if txt.strip():
         utilization_pct = (total_reads_required / cartridge_capacity) * 100
         st.markdown(f"**Cartridge Utilization:** {utilization_pct:.2f}% of {cartridge_capacity:,} reads")
 
-        # Per-library dilution factor
+        # Dilution factors
         raw_vols = df["Volume Needed (µL)"].fillna(0).astype(float)
         dilution_factors = []
         diluted_vols = []
         for raw in raw_vols:
             if raw <= 0:
-                d = 1.00
-                diluted = 0.00
+                d = 1.0
+                diluted = 0.0
             else:
                 d_min = 1.0 / raw
                 d_max = 10.0 / raw
@@ -110,31 +109,29 @@ if txt.strip():
         st.subheader("📊 Input and Calculations")
         st.dataframe(df)
 
-        # Compute pool concentration internally (preserves original float precision)
+        # Correct pool concentration logic (from the original working code)
         total_mass_ng = df["Mass Needed (ng)"].sum()
         total_pooled_volume_uL = df["Diluted Vol (µL)"].sum()
-        calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL if total_pooled_volume_uL > 0 else 0.0
-
-        measured_pool_conc_ng_uL_temp = calculated_pool_conc_ng_uL  # internal precise value
+        calculated_pool_conc_ng_uL = total_mass_ng / total_pooled_volume_uL
 
         # Weighted average library size
-        weighted_lib_size = (df["Library Size"] * df["Mass Needed (ng)"]).sum() / df["Mass Needed (ng)"].sum()
+        weighted_lib_size = (df["Library Size"] * df["Mass Needed (ng)"]).sum() / total_mass_ng
 
         # Pool concentration in nM
-        pool_conc_nM_measured = measured_pool_conc_ng_uL_temp * 0.8 * 1e6 / (660 * weighted_lib_size)
+        pool_conc_nM = calculated_pool_conc_ng_uL * 0.8 * 1e6 / (660 * weighted_lib_size)
 
         st.write(f"**Calculated pool concentration (ng/µL):** {calculated_pool_conc_ng_uL:.3f}")
-        st.write(f"**Measured pool concentration (nM):** {pool_conc_nM_measured:.3f}")
+        st.write(f"**Calculated pool concentration (nM):** {pool_conc_nM:.3f}")
 
-        # Show number_input for user only (does not affect calculation unless user changes)
+        # User input for measured pool concentration (optional override)
         measured_pool_conc_ng_uL = st.number_input(
             "Measured pooled library concentration (ng/µL)",
             value=calculated_pool_conc_ng_uL,
             step=0.01
         )
 
-        # Pool + PhiX volumes (exact formulas)
-        V_pool_uL = loading_conc * (100 - phiX_pct) / 100 * final_volume_uL / (pool_conc_nM_measured * 1000)
+        # Pool + PhiX volumes
+        V_pool_uL = loading_conc * (100 - phiX_pct) / 100 * final_volume_uL / (pool_conc_nM * 1000)
         if phix_input_type == "1 nM stock":
             phix_stock_pM = 1000 / phix_dilution
         else:
