@@ -68,7 +68,7 @@ if txt.strip():
         ).round(3)
 
         # Mass and volume (ng, µL)
-        df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * (df["Frac of Cart (%)"]) * 100) #df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
+        df["Mass Needed (ng)"] = 9.8 * (250 / (df["Library Size"] - 124)) * ((df["Frac of Cart (%)"]) * 100) #df["Unique Oligos"] * desired_coverage / cartridge_capacity * df["Qubit Quant (ng/µL)"]
         df["Volume Needed (µL)"] = df["Mass Needed (ng)"] / df["Qubit Quant (ng/µL)"]
 
         # Cartridge Utilization Percentage
