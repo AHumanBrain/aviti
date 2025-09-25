@@ -167,20 +167,41 @@ else:
                 st.write(f"**Pooled library concentration (nM) based on measured value:** {pool_conc_nM_measured:.3f} nM")
                 st.write(f"**Weighted average library size used (bp):** {weighted_avg_size:.1f} bp")
 
-                # --- Simplified PhiX / Pool mixing ---
+                # --------------------
+                # Compute pool + PhiX volumes based on target loading concentration and spike-in %
+                # --------------------
                 if pool_conc_nM_measured <= 0:
                     st.warning("Measured pool concentration (nM) must be > 0 to compute required volumes.")
                 else:
+                    # Convert measured pool concentration to pM
                     pool_conc_pM_measured = pool_conc_nM_measured * 1000.0
-                    total_volume_uL = final_volume_uL
-
-                    if include_phix and phiX_pct > 0:
-                        V_phix_uL = (phiX_pct / 100.0) * total_volume_uL
-                    else:
-                        V_phix_uL = 0.0
-
-                    V_pool_uL = total_volume_uL - V_phix_uL
+                
+                    # Target library and PhiX concentrations
+                    lib_target_pM = loading_conc_pM * (100 - phiX_pct) / 100.0  # e.g., 90% of 10 pM = 9 pM
+                    phix_target_pM = loading_conc_pM * phiX_pct / 100.0          # e.g., 10% of 10 pM = 1 pM
+                
+                    # Compute volumes required to achieve target concentrations
+                    V_pool_uL = lib_target_pM * final_volume_uL / pool_conc_pM_measured
+                    V_phix_uL = phix_target_pM * final_volume_uL / (1000 / phix_dilution if phix_input_type == "1 nM stock" else 1)  # convert stock to pM if 1 nM
+                
                     total_mix_uL = V_pool_uL + V_phix_uL
+                
+                    # Check against available pooled volume
+                    shortage_msg = ""
+                    if V_pool_uL > total_pooled_volume_uL:
+                        shortage_msg = (
+                            f"WARNING: required pool volume {V_pool_uL:.2f} µL is greater than "
+                            f"available pooled volume {total_pooled_volume_uL:.2f} µL. Prepare more pool or adjust plan."
+                        )
+                
+                    # Display computed volumes
+                    st.subheader("🔢 Computed mixing volumes")
+                    st.write(f"**Volume of pooled library to use (µL):** {V_pool_uL:.2f}")
+                    st.write(f"**PhiX volume (µL):** {V_phix_uL:.2f} (for {phiX_pct:.1f}% spike-in)")
+                    st.write(f"**Total pre-denature mix volume (µL):** {total_mix_uL:.2f}")
+                    if shortage_msg:
+                        st.warning(shortage_msg)
+
 
                     available_pool_uL = total_pooled_volume_uL
                     shortage_msg = ""
