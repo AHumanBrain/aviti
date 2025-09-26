@@ -190,15 +190,15 @@ else:
 3. **Measure pooled concentration** (Qubit or equivalent) and update if needed.
 
 4. **Mix pool + PhiX**: transfer **{V_pool_uL:.2f} µL** pooled library and **{V_phix_uL:.2f} µL** PhiX.  
-- Achieves ~{phiX_pct:.1f}% PhiX.  
-- Total pool+PhiX mixture: **{pool_phix_mix_uL:.2f} µL**
+    - Achieves ~{phiX_pct:.1f}% PhiX.  
+    - Total pool+PhiX mixture: **{pool_phix_mix_uL:.2f} µL**
 
 5. **Denature with NaOH**:  
-- Add **{naoh_vol_uL:.2f} µL** 0.2 N NaOH, mix gently, spin, incubate 5 min.  
-- Add **{neutralize_vol_uL:.2f} µL** of Tris-HCl (pH 7.0), mix, spin.
+    - Add **{naoh_vol_uL:.2f} µL** 0.2 N NaOH, mix gently, spin, incubate 5 min.  
+    - Add **{neutralize_vol_uL:.2f} µL** of Tris-HCl (pH 7.0), mix, spin.
 
 6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
-- Volume of buffer needed: **{buffer_vol_uL:.2f} µL**
+    - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**
 
 7. **Load** all **{final_volume_uL:.0f} µL** into the cartridge according to SOP.
 
