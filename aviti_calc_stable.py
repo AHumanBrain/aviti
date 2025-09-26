@@ -181,7 +181,8 @@ else:
                         buffer_vol_uL = 0.0
                         st.warning("Computed loading buffer volume < 0 µL. Check PhiX fraction, final volume, or measured pool concentration.")
 
-                    instructions_md = f"""1. **Prepare individual libraries**: pipette each library at the Diluted Vol (µL) listed above.  
+                    instructions_md = f"""
+1. **Prepare individual libraries**: pipette each library at the Diluted Vol (µL) listed above.  
     - Total pooled volume: **{total_pooled_volume_uL:.2f} µL**  
     - Total mass pooled: **{total_mass_ng:.6f} ng**
 
