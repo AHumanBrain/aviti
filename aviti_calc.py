@@ -5,6 +5,11 @@ import io
 st.set_page_config(layout="wide")
 st.title("Library Pooling, Dilution, and Loading Calculator")
 
+st.markdown("""
+Paste **tab-separated values (TSV)** below with the following columns only:
+
+**Alias | Library Size (bp) | Unique Oligos | Qubit Quant (ng/µL)**
+
 # --------------------
 # Example TSV
 # --------------------
