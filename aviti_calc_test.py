@@ -206,7 +206,6 @@ else:
 > Note: If required pool volume exceeds available pooled volume, prepare more pool or adjust plan.
 """
                     st.markdown(instructions_md)
-
                 except Exception as e:
                     st.error(f"Error generating step-by-step instructions: {e}")
 
