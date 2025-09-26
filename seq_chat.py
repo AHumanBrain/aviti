@@ -195,8 +195,8 @@ else:
    - Total pool+PhiX mixture: **{pool_phix_mix_uL:.2f} µL**
 
 5. **Denature with NaOH**:  
-   - Add **{naoh_vol_uL:.2f} µL** 0.2 N NaOH, mix gently, spin, incubate 5 min.  
-   - Add **{neutralize_vol_uL:.2f} µL** of Tris-HCl (pH 7.0), mix, spin, to neutralize.
+   - Add **{naoh_vol_uL:.2f} µL** 0.2 N NaOH, mix, spin, incubate 5 min.  
+   - Add **{neutralize_vol_uL:.2f} µL** of Tris-HCl (pH 7.0), mix, spin.
 
 6. **Add loading buffer** to bring total volume to **{final_volume_uL:.0f} µL**:  
    - Volume of buffer needed: **{buffer_vol_uL:.2f} µL**
